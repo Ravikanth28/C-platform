@@ -1,13 +1,31 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+import os
+from dotenv import load_dotenv
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./platform.db"
+load_dotenv()
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "sqlite:///./cplatform.db"
 )
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+_is_sqlite = DATABASE_URL.startswith("sqlite")
+_kwargs = {}
+if _is_sqlite:
+    _kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    _kwargs.update({
+        "pool_pre_ping": True,
+        "pool_recycle": 300,
+        "pool_size": 5,
+        "max_overflow": 10,
+    })
+
+engine = create_engine(DATABASE_URL, echo=False, **_kwargs)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 

@@ -1,114 +1,179 @@
-from typing import List
+"""Code submission + judging."""
+import tempfile
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-import auth
-import code_runner
 import models
 import schemas
+from auth import get_current_user
+from code_runner import compile_code, judge_submission, run_once
 from database import get_db
 
-router = APIRouter(prefix="/api/submissions", tags=["submissions"])
+router = APIRouter()
 
 
-@router.post("/run", response_model=schemas.CodeRunResponse)
+class RunRequest(BaseModel):
+    code: str
+    custom_input: str = ""
+
+
+@router.post("/run")
 def run_code(
-    req: schemas.CodeRunRequest,
-    _: models.User = Depends(auth.get_current_user),
+    payload: RunRequest,
+    _user: models.User = Depends(get_current_user),
 ):
-    """Run code with custom stdin — does not save a submission."""
-    result = code_runner.run_code(req.code, req.language, req.stdin)
-    return result
+    """Compile and run code against custom input (no submission stored)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        exe, compile_error = compile_code(payload.code, tmpdir)
+        if not exe:
+            return {"status": "Compilation Error", "output": compile_error, "time_ms": 0}
+        result = run_once(exe, payload.custom_input)
+        return {
+            "status": result["status"],
+            "output": result["output"],
+            "time_ms": result["time_ms"],
+        }
 
 
-@router.post("/submit", response_model=schemas.SubmissionResponse)
+@router.post("", status_code=201)
 def submit_code(
-    req: schemas.CodeSubmitRequest,
+    payload: schemas.SubmissionCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(get_current_user),
 ):
-    """Submit code — run against all hidden + sample test cases."""
-    problem = db.query(models.Problem).filter(models.Problem.id == req.problem_id).first()
+    problem = db.query(models.Problem).filter(models.Problem.id == payload.problem_id).first()
     if not problem:
-        raise HTTPException(status_code=404, detail="Problem not found")
+        raise HTTPException(404, "Problem not found")
 
-    test_cases = (
-        db.query(models.TestCase)
-        .filter(models.TestCase.problem_id == req.problem_id)
-        .all()
-    )
+    test_cases = [
+        {
+            "id": tc.id,
+            "input_data": tc.input_data,
+            "expected_output": tc.expected_output,
+            "is_hidden": tc.is_hidden,
+        }
+        for tc in problem.test_cases
+    ]
 
-    if not test_cases:
-        result = code_runner.run_code(req.code, req.language)
-        final_status = "accepted" if result["status"] == "success" else "runtime_error"
-        output_text = result["output"] or result["error"]
-    else:
-        lines: List[str] = []
-        final_status = "accepted"
+    verdict = judge_submission(payload.code, test_cases)
 
-        for tc in test_cases:
-            result = code_runner.run_code(req.code, req.language, tc.input_data)
-
-            if result["status"] == "tle":
-                final_status = "time_limit"
-                lines.append(f"Test #{tc.id}: ⏱ Time Limit Exceeded")
-                break
-            elif result["status"] == "error":
-                final_status = "runtime_error"
-                lines.append(f"Test #{tc.id}: 💥 Runtime Error\n{result['error']}")
-                break
-            else:
-                actual = result["output"].strip()
-                expected = tc.expected_output.strip()
-                if actual == expected:
-                    lines.append(f"Test #{tc.id}: ✓ Passed")
-                else:
-                    final_status = "wrong_answer"
-                    lines.append(
-                        f"Test #{tc.id}: ✗ Wrong Answer\n"
-                        f"  Expected : {expected[:200]}\n"
-                        f"  Got      : {actual[:200]}"
-                    )
-
-        output_text = "\n".join(lines)
-
-    submission = models.Submission(
+    sub = models.Submission(
+        problem_id=payload.problem_id,
         user_id=current_user.id,
-        problem_id=req.problem_id,
-        code=req.code,
-        language=req.language,
-        status=final_status,
-        output=output_text,
+        code=payload.code,
+        language=payload.language,
+        status=verdict["status"],
+        score=verdict["score"],
+        time_taken=payload.time_taken,
+        execution_time=verdict.get("execution_time"),
+        tab_switches=payload.tab_switches or 0,
+        test_cases_passed=verdict["passed"],
+        test_cases_total=verdict["total"],
     )
-    db.add(submission)
+    db.add(sub)
+    db.flush()
+
+    for r in verdict.get("results", []):
+        db.add(
+            models.SubmissionResult(
+                submission_id=sub.id,
+                test_case_id=r.get("test_case_id"),
+                status=r["status"],
+                actual_output=r.get("actual_output", ""),
+                execution_time=r.get("execution_time"),
+            )
+        )
+
     db.commit()
-    db.refresh(submission)
-    return submission
+    db.refresh(sub)
+
+    return {
+        "id": sub.id,
+        "status": sub.status,
+        "score": sub.score,
+        "passed": verdict["passed"],
+        "total": verdict["total"],
+        "execution_time": sub.execution_time,
+        "error": verdict.get("error", ""),
+        "results": [
+            {
+                "test_case_id": r.get("test_case_id"),
+                "status": r["status"],
+                "actual_output": r.get("actual_output"),
+                "execution_time": r.get("execution_time"),
+                "is_hidden": r.get("is_hidden", False),
+            }
+            for r in verdict.get("results", [])
+        ],
+    }
 
 
-@router.get("/", response_model=List[schemas.SubmissionResponse])
-def my_submissions(
+@router.get("")
+def list_submissions(
+    problem_id: int = None,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(get_current_user),
 ):
-    return (
-        db.query(models.Submission)
-        .filter(models.Submission.user_id == current_user.id)
-        .order_by(models.Submission.created_at.desc())
-        .all()
-    )
+    query = db.query(models.Submission)
+    if current_user.role != "admin":
+        query = query.filter(models.Submission.user_id == current_user.id)
+    if problem_id:
+        query = query.filter(models.Submission.problem_id == problem_id)
+    return [
+        {
+            "id": s.id,
+            "problem_id": s.problem_id,
+            "problem_title": s.problem.title if s.problem else None,
+            "status": s.status,
+            "score": s.score,
+            "time_taken": s.time_taken,
+            "test_cases_passed": s.test_cases_passed,
+            "test_cases_total": s.test_cases_total,
+            "submitted_at": s.submitted_at.isoformat(),
+        }
+        for s in query.order_by(models.Submission.submitted_at.desc()).all()
+    ]
 
 
-@router.get("/{submission_id}", response_model=schemas.SubmissionResponse)
+@router.get("/{sub_id}")
 def get_submission(
-    submission_id: int,
+    sub_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(get_current_user),
 ):
-    sub = db.query(models.Submission).filter(models.Submission.id == submission_id).first()
-    if not sub:
-        raise HTTPException(status_code=404, detail="Submission not found")
-    if sub.user_id != current_user.id and current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Access denied")
-    return sub
+    s = db.query(models.Submission).filter(models.Submission.id == sub_id).first()
+    if not s:
+        raise HTTPException(404, "Submission not found")
+    if current_user.role != "admin" and s.user_id != current_user.id:
+        raise HTTPException(403, "Forbidden")
+
+    results = [
+        {
+            "test_case_id": r.test_case_id,
+            "status": r.status,
+            "actual_output": r.actual_output,
+            "execution_time": r.execution_time,
+        }
+        for r in s.results
+    ]
+
+    return {
+        "id": s.id,
+        "problem_id": s.problem_id,
+        "problem_title": s.problem.title if s.problem else None,
+        "mode": s.problem.mode.value if s.problem else None,
+        "user_id": s.user_id,
+        "username": s.user.username if s.user else None,
+        "code": s.code,
+        "status": s.status,
+        "score": s.score,
+        "time_taken": s.time_taken,
+        "execution_time": s.execution_time,
+        "tab_switches": s.tab_switches,
+        "test_cases_passed": s.test_cases_passed,
+        "test_cases_total": s.test_cases_total,
+        "submitted_at": s.submitted_at.isoformat(),
+        "results": results,
+    }

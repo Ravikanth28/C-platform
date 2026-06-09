@@ -1,0 +1,111 @@
+import { useEffect, useState } from 'react'
+import { Eye, Download, Youtube, FileText, Link2, Search, BookOpen } from 'lucide-react'
+import api from '../../api/client'
+import { PageLoader } from '../../components/ui/LoadingSpinner'
+
+const TYPE_ICONS = {
+  pdf:     <FileText size={20} className="text-rose-400" />,
+  docx:    <FileText size={20} className="text-blue-400" />,
+  youtube: <Youtube  size={20} className="text-red-500" />,
+  link:    <Link2    size={20} className="text-cyan-400" />,
+}
+
+const TYPE_COLORS = {
+  pdf: 'badge-red', docx: 'badge-blue', youtube: 'badge-red', link: 'badge-cyan',
+}
+
+export default function StudentNotes() {
+  const [notes, setNotes]     = useState([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch]   = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
+
+  useEffect(() => {
+    api.get('/notes').then((r) => setNotes(r.data)).finally(() => setLoading(false))
+  }, [])
+
+  const handleView = async (note) => {
+    await api.post(`/notes/${note.id}/view`).catch(() => {})
+    if (note.file_url)      window.open(note.file_url, '_blank')
+    else if (note.yt_link)  window.open(note.yt_link, '_blank')
+    else if (note.external_link) window.open(note.external_link, '_blank')
+  }
+
+  const handleDownload = async (note) => {
+    await api.post(`/notes/${note.id}/download`).catch(() => {})
+    if (note.file_url) {
+      const a = document.createElement('a')
+      a.href = note.file_url; a.download = note.title
+      a.click()
+    }
+  }
+
+  const filtered = notes.filter((n) => {
+    const q = search.toLowerCase()
+    return (
+      n.title.toLowerCase().includes(q) &&
+      (typeFilter ? n.upload_type === typeFilter : true)
+    )
+  })
+
+  if (loading) return <PageLoader />
+
+  return (
+    <div className="space-y-5 animate-fade-in">
+      <div>
+        <h1 className="text-2xl font-bold text-white">Study Notes</h1>
+        <p className="text-slate-400 text-sm mt-0.5">Learning materials shared by your instructor</p>
+      </div>
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-0 max-w-xs">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input className="input pl-8" placeholder="Search notes…" value={search}
+            onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <div className="flex gap-2">
+          {[['All', ''], ['PDF', 'pdf'], ['DOCX', 'docx'], ['YouTube', 'youtube'], ['Link', 'link']].map(([label, val]) => (
+            <button key={val} onClick={() => setTypeFilter(val)}
+              className={typeFilter === val ? 'tab-active' : 'tab-inactive'}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="card text-center py-16">
+          <BookOpen size={40} className="mx-auto text-slate-600 mb-3" />
+          <p className="text-slate-400">No notes available yet.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((note) => (
+            <div key={note.id} className="card-hover">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-xl bg-dark-400 flex items-center justify-center flex-shrink-0">
+                  {TYPE_ICONS[note.upload_type]}
+                </div>
+                <span className={`badge ${TYPE_COLORS[note.upload_type] || 'badge-blue'} text-[10px]`}>
+                  {note.upload_type?.toUpperCase()}
+                </span>
+              </div>
+              <h3 className="font-semibold text-white text-sm mb-1 line-clamp-2">{note.title}</h3>
+              {note.description && (
+                <p className="text-xs text-slate-400 line-clamp-2 mb-3">{note.description}</p>
+              )}
+              <div className="flex gap-2 mt-auto pt-2">
+                <button onClick={() => handleView(note)} className="btn-primary flex-1 justify-center text-xs py-1.5">
+                  <Eye size={12} /> View
+                </button>
+                {(note.file_url) && (
+                  <button onClick={() => handleDownload(note)} className="btn-secondary px-3">
+                    <Download size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

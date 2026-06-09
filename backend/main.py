@@ -1,54 +1,59 @@
+import os
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
-import auth
-import models
-from database import SessionLocal, engine
+from database import Base, engine
+from routers import admin, ai_router, auth, notes, problems, reports, students, submissions
 
-# Create DB tables
-models.Base.metadata.create_all(bind=engine)
+load_dotenv()
 
+# ── Create all tables ──────────────────────────────────────────────────────
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as _db_exc:
+    import logging
+    logging.warning(f"DB create_all failed (configure DATABASE_URL in .env): {_db_exc}")
 
-def _seed_admin() -> None:
-    """Create a default admin account on first run."""
-    db = SessionLocal()
-    try:
-        if not db.query(models.User).filter(models.User.username == "admin").first():
-            db.add(
-                models.User(
-                    username="admin",
-                    email="admin@codeplatform.local",
-                    password_hash=auth.get_password_hash("admin123"),
-                    role="admin",
-                )
-            )
-            db.commit()
-            print("✓ Default admin seeded  (username: admin / password: admin123)")
-    finally:
-        db.close()
+# ── Ensure upload directory exists ────────────────────────────────────────
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
+os.makedirs(os.path.join(UPLOAD_DIR, "notes"), exist_ok=True)
 
+# ── App ────────────────────────────────────────────────────────────────────
+app = FastAPI(
+    title="C Programming Learning Platform",
+    version="2.0.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    redirect_slashes=False,
+)
 
-_seed_admin()
-
-app = FastAPI(title="CodePlatform API", version="1.0.0")
-
+# ── CORS ───────────────────────────────────────────────────────────────────
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[frontend_url, "http://127.0.0.1:5173", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-from routers.auth import router as auth_router
-from routers.problems import router as problems_router
-from routers.submissions import router as submissions_router
+# ── Static uploads ─────────────────────────────────────────────────────────
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-app.include_router(auth_router)
-app.include_router(problems_router)
-app.include_router(submissions_router)
+# ── Routers ────────────────────────────────────────────────────────────────
+app.include_router(auth.router,        prefix="/api/auth",        tags=["Auth"])
+app.include_router(admin.router,       prefix="/api/admin",       tags=["Admin"])
+app.include_router(notes.router,       prefix="/api/notes",       tags=["Notes"])
+app.include_router(problems.router,    prefix="/api/problems",    tags=["Problems"])
+app.include_router(submissions.router, prefix="/api/submissions", tags=["Submissions"])
+app.include_router(reports.router,     prefix="/api/reports",     tags=["Reports"])
+app.include_router(students.router,    prefix="/api/students",    tags=["Students"])
+app.include_router(ai_router.router,   prefix="/api/ai",          tags=["AI"])
 
 
-@app.get("/")
-def root():
-    return {"message": "CodePlatform API is running", "docs": "/docs"}
+@app.get("/api/health")
+async def health():
+    return {"status": "healthy", "version": "2.0.0"}

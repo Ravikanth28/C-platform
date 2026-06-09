@@ -1,135 +1,158 @@
 """
-In-process code runner.
-
-- Python  → exec() inside a daemon thread with stdout/stderr capture + 10s timeout
-- JavaScript → Node.js subprocess
-- C++      → g++ compile then subprocess
+C Code Runner – compiles and executes C code in a temporary sandbox.
+Works on both Windows (gcc must be in PATH) and Linux.
 """
-
-import io
 import os
 import subprocess
-import sys
 import tempfile
-import threading
-import traceback
+import time
+from typing import Dict, List
+
+# On Windows, ensure MinGW/UCRT64 gcc is findable if not already in PATH
+_GCC_HINTS = [
+    r"C:\msys64\ucrt64\bin",
+    r"C:\msys64\mingw64\bin",
+    r"C:\MinGW\bin",
+]
+for _hint in _GCC_HINTS:
+    if os.path.isfile(os.path.join(_hint, "gcc.exe")) and _hint not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = _hint + os.pathsep + os.environ.get("PATH", "")
+        break
 
 
-# ── Python in-process ────────────────────────────────────────────────────────
+def _normalize(output: str) -> str:
+    """Strip trailing whitespace from each line and trim the whole block."""
+    return "\n".join(line.rstrip() for line in output.strip().splitlines())
 
-def _run_python(code: str, stdin_input: str, result: dict, done: threading.Event) -> None:
-    stdout_buf = io.StringIO()
-    stderr_buf = io.StringIO()
-    stdin_buf = io.StringIO(stdin_input)
 
-    _old_out, _old_err, _old_in = sys.stdout, sys.stderr, sys.stdin
-    sys.stdout, sys.stderr, sys.stdin = stdout_buf, stderr_buf, stdin_buf
+def _exe_name(tmpdir: str) -> str:
+    return os.path.join(tmpdir, "sol.exe" if os.name == "nt" else "sol")
+
+
+def compile_code(src: str, tmpdir: str) -> tuple[str, str]:
+    """
+    Compile C source.  Returns (exe_path, error_message).
+    exe_path is empty string on failure.
+    """
+    src_file = os.path.join(tmpdir, "solution.c")
+    exe = _exe_name(tmpdir)
+    with open(src_file, "w", encoding="utf-8") as f:
+        f.write(src)
 
     try:
-        exec(compile(code, "<student_code>", "exec"), {"__builtins__": __builtins__, "__name__": "__main__"})
-        result["output"] = stdout_buf.getvalue()
-        result["error"] = stderr_buf.getvalue()
-        result["status"] = "success"
-    except SystemExit:
-        result["output"] = stdout_buf.getvalue()
-        result["error"] = ""
-        result["status"] = "success"
-    except Exception:
-        result["output"] = stdout_buf.getvalue()
-        result["error"] = traceback.format_exc()
-        result["status"] = "error"
-    finally:
-        sys.stdout, sys.stderr, sys.stdin = _old_out, _old_err, _old_in
-        done.set()
+        result = subprocess.run(
+            ["gcc", "-o", exe, src_file, "-Wall", "-lm", "-O2"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except FileNotFoundError:
+        return "", (
+            "gcc not found.\n"
+            "Please install MinGW-w64 and make sure gcc.exe is in your PATH.\n"
+            "Download from: https://winlibs.com/ or https://www.mingw-w64.org/"
+        )
+    if result.returncode != 0:
+        return "", result.stderr
+    return exe, ""
 
 
-def run_python_inprocess(code: str, stdin_input: str = "", timeout: int = 10) -> dict:
-    result: dict = {"output": "", "error": "", "status": "success"}
-    done = threading.Event()
-    thread = threading.Thread(target=_run_python, args=(code, stdin_input, result, done), daemon=True)
-    thread.start()
-    thread.join(timeout)
-    if not done.is_set():
-        result["output"] = result.get("output", "")
-        result["error"] = f"Time Limit Exceeded ({timeout}s)"
-        result["status"] = "tle"
-    return result
-
-
-# ── Subprocess helpers ────────────────────────────────────────────────────────
-
-def _subprocess_run(cmd: list, stdin_input: str = "", timeout: int = 10) -> dict:
+def run_once(exe: str, input_data: str, time_limit: float = 5.0) -> Dict:
+    """Run compiled binary with given input. Returns dict with output/status."""
+    start = time.monotonic()
     try:
         proc = subprocess.run(
-            cmd,
-            input=stdin_input,
+            [exe],
+            input=input_data,
             capture_output=True,
             text=True,
-            timeout=timeout,
+            timeout=time_limit,
         )
+        elapsed = (time.monotonic() - start) * 1000  # ms
+        if proc.returncode != 0:
+            return {
+                "status": "Runtime Error",
+                "output": proc.stderr[:500],
+                "time_ms": elapsed,
+            }
         return {
-            "output": proc.stdout,
-            "error": proc.stderr,
-            "status": "success" if proc.returncode == 0 else "error",
+            "status": "ok",
+            "output": _normalize(proc.stdout),
+            "time_ms": elapsed,
         }
     except subprocess.TimeoutExpired:
-        return {"output": "", "error": f"Time Limit Exceeded ({timeout}s)", "status": "tle"}
-    except FileNotFoundError as exc:
-        return {"output": "", "error": f"Runtime not found: {exc}", "status": "error"}
-    except Exception as exc:
-        return {"output": "", "error": str(exc), "status": "error"}
+        return {
+            "status": "Time Limit Exceeded",
+            "output": "",
+            "time_ms": time_limit * 1000,
+        }
 
 
-def run_javascript(code: str, stdin_input: str = "", timeout: int = 10) -> dict:
-    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".js", delete=False)
-    try:
-        tmp.write(code)
-        tmp.close()
-        return _subprocess_run(["node", tmp.name], stdin_input, timeout)
-    finally:
-        try:
-            os.unlink(tmp.name)
-        except OSError:
-            pass
+def judge_submission(code: str, test_cases: List[Dict], time_limit: float = 5.0) -> Dict:
+    """
+    Full judge: compile once, run all test cases, return verdict.
 
+    Each item in `test_cases` must have: id, input_data, expected_output, is_hidden.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        exe, compile_error = compile_code(code, tmpdir)
+        if not exe:
+            return {
+                "status": "Compilation Error",
+                "error": compile_error,
+                "results": [],
+                "passed": 0,
+                "total": len(test_cases),
+                "score": 0.0,
+                "execution_time": 0.0,
+            }
 
-def run_cpp(code: str, stdin_input: str = "", timeout: int = 10) -> dict:
-    src = tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False)
-    out_path = src.name.replace(".cpp", "")
-    try:
-        src.write(code)
-        src.close()
+        results = []
+        passed = 0
+        max_time = 0.0
 
-        compile_proc = subprocess.run(
-            ["g++", "-O2", "-o", out_path, src.name],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if compile_proc.returncode != 0:
-            return {"output": "", "error": compile_proc.stderr, "status": "error"}
+        for tc in test_cases:
+            run = run_once(exe, tc.get("input_data", ""), time_limit)
+            expected = _normalize(tc.get("expected_output", ""))
+            actual = run["output"]
+            tc_status = run["status"]
 
-        return _subprocess_run([out_path], stdin_input, timeout)
-    except FileNotFoundError:
-        return {"output": "", "error": "g++ not found. Install GCC/MinGW to run C++.", "status": "error"}
-    except subprocess.TimeoutExpired:
-        return {"output": "", "error": "Compilation timed out.", "status": "error"}
-    finally:
-        for path in (src.name, out_path):
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
+            if tc_status == "ok":
+                tc_status = "Passed" if actual == expected else "Failed"
+                if tc_status == "Passed":
+                    passed += 1
 
+            max_time = max(max_time, run["time_ms"])
+            results.append(
+                {
+                    "test_case_id": tc.get("id"),
+                    "status": tc_status,
+                    "actual_output": actual,
+                    "execution_time": run["time_ms"],
+                    "is_hidden": tc.get("is_hidden", False),
+                }
+            )
 
-# ── Dispatcher ────────────────────────────────────────────────────────────────
+        total = len(test_cases)
+        score = round((passed / total) * 100, 2) if total else 0.0
 
-def run_code(code: str, language: str, stdin_input: str = "") -> dict:
-    lang = language.lower()
-    if lang == "python":
-        return run_python_inprocess(code, stdin_input)
-    elif lang == "javascript":
-        return run_javascript(code, stdin_input)
-    elif lang in ("cpp", "c++"):
-        return run_cpp(code, stdin_input)
-    return {"output": "", "error": f"Language '{language}' is not supported.", "status": "error"}
+        # Determine overall status
+        statuses = {r["status"] for r in results}
+        if passed == total:
+            overall = "Accepted"
+        elif "Time Limit Exceeded" in statuses:
+            overall = "Time Limit Exceeded"
+        elif "Runtime Error" in statuses:
+            overall = "Runtime Error"
+        else:
+            overall = "Wrong Answer"
+
+        return {
+            "status": overall,
+            "error": "",
+            "results": results,
+            "passed": passed,
+            "total": total,
+            "score": score,
+            "execution_time": max_time,
+        }

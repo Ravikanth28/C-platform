@@ -1,0 +1,295 @@
+/**
+ * TestMode page – identical to PracticeMode but with proctoring enabled.
+ * We re-use the ProblemForm component from PracticeMode by passing isTest=true.
+ */
+import { useEffect, useState } from 'react'
+import { Plus, Trash2, Search, FlaskConical, ShieldCheck } from 'lucide-react'
+import toast from 'react-hot-toast'
+import api from '../../api/client'
+import Modal          from '../../components/ui/Modal'
+import { PageLoader } from '../../components/ui/LoadingSpinner'
+import { DifficultyBadge } from '../../components/ui/Badge'
+
+// ── Re-use ProblemForm ─────────────────────────────────────────────────────
+// (Inline here to avoid circular import; identical to PracticeMode's form
+//  but with isTest=true so proctoring section is shown.)
+
+const EMPTY_TC = { input_data: '', expected_output: '', is_hidden: false }
+
+function ProblemForm({ onSave, onCancel }) {
+  const [step, setStep] = useState(1)
+  const [form, setForm] = useState({
+    title: '', description: '', topics: '', difficulty: 'medium',
+    duration: 60, is_for_all: true, assigned_user_ids: '',
+    start_time: '', end_time: '',
+    tab_switch_detect: true, copy_paste_disable: true,
+    f12_disable: true, fullscreen_required: true,
+    test_cases: [{ ...EMPTY_TC }],
+  })
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiForm, setAiForm] = useState({ topic: '', difficulty: 'medium', description: '' })
+
+  const set = (k) => (e) => {
+    const val = e.target.type === 'checkbox' ? e.target.checked : e.target.value
+    setForm({ ...form, [k]: val })
+  }
+  const setTc = (i, k, v) => {
+    const tcs = [...form.test_cases]; tcs[i] = { ...tcs[i], [k]: v }
+    setForm({ ...form, test_cases: tcs })
+  }
+  const addTc   = () => setForm({ ...form, test_cases: [...form.test_cases, { ...EMPTY_TC }] })
+  const removeTc = (i) => setForm({ ...form, test_cases: form.test_cases.filter((_, idx) => idx !== i) })
+
+  const generateAI = async () => {
+    if (!aiForm.topic) { toast.error('Enter a topic'); return }
+    setAiLoading(true)
+    try {
+      const { data } = await api.post('/ai/generate-problem', aiForm)
+      setForm((f) => ({
+        ...f,
+        title: data.title || f.title, description: data.description || f.description,
+        topics: data.topics || f.topics, difficulty: data.difficulty || f.difficulty,
+        test_cases: data.test_cases?.length ? data.test_cases : f.test_cases,
+      }))
+      toast.success('AI problem generated!'); setStep(1)
+    } catch (err) { toast.error(err.response?.data?.detail || 'AI generation failed') }
+    finally { setAiLoading(false) }
+  }
+
+  const handleSave = () => {
+    if (!form.title || !form.description) { toast.error('Title and description required'); return }
+    onSave({
+      ...form, mode: 'test',
+      start_time: form.start_time || null, end_time: form.end_time || null,
+      duration: Number(form.duration) || null,
+      assigned_user_ids: form.assigned_user_ids
+        ? form.assigned_user_ids.split(',').map((x) => parseInt(x.trim())).filter(Boolean) : [],
+    })
+  }
+
+  return (
+    <div>
+      <div className="flex gap-2 mb-5">
+        {[['1 · Problem Details', 1], ['2 · Questions & Proctoring', 2]].map(([label, s]) => (
+          <button key={s} type="button" onClick={() => setStep(s)}
+            className={step === s ? 'tab-active' : 'tab-inactive'}>{label}</button>
+        ))}
+      </div>
+
+      {step === 1 && (
+        <div className="space-y-4">
+          <div><label className="label">Title *</label>
+            <input className="input" value={form.title} onChange={set('title')} placeholder="Test name" required /></div>
+          <div><label className="label">Description *</label>
+            <textarea className="input resize-none" rows={4} value={form.description} onChange={set('description')}
+              placeholder="Problem statement…" required /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="label">Topics</label>
+              <input className="input" value={form.topics} onChange={set('topics')} placeholder="arrays, pointers" /></div>
+            <div><label className="label">Difficulty</label>
+              <select className="input" value={form.difficulty} onChange={set('difficulty')}>
+                <option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option>
+              </select></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="label">Start Time</label>
+              <input type="datetime-local" className="input" value={form.start_time} onChange={set('start_time')} /></div>
+            <div><label className="label">End Time</label>
+              <input type="datetime-local" className="input" value={form.end_time} onChange={set('end_time')} /></div>
+          </div>
+          <div><label className="label">Duration (minutes)</label>
+            <input type="number" className="input" value={form.duration} onChange={set('duration')} min={5} /></div>
+          <div>
+            <label className="label">Assign To</label>
+            <div className="flex gap-3 mb-2">
+              {[['All Students', true], ['Specific Students', false]].map(([lbl, val]) => (
+                <label key={lbl} className="flex items-center gap-2 cursor-pointer text-sm text-slate-300">
+                  <input type="radio" className="accent-primary" checked={form.is_for_all === val}
+                    onChange={() => setForm({ ...form, is_for_all: val })} />{lbl}
+                </label>
+              ))}
+            </div>
+            {!form.is_for_all && (
+              <input className="input" value={form.assigned_user_ids} onChange={set('assigned_user_ids')}
+                placeholder="Student IDs comma-separated" />
+            )}
+          </div>
+
+          {/* Proctoring */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <ShieldCheck size={15} className="text-violet-400" />
+              <label className="label !mb-0 text-violet-300">Proctoring Options</label>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                ['tab_switch_detect',   'Tab Switch Detection'],
+                ['copy_paste_disable',  'Disable Copy-Paste'],
+                ['f12_disable',         'Disable F12 / DevTools'],
+                ['fullscreen_required', 'Require Full Screen'],
+              ].map(([key, label]) => (
+                <label key={key}
+                  className={`flex items-center gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                    form[key] ? 'border-violet/40 bg-violet/8 text-violet-300' : 'border-[rgba(255,255,255,0.06)] text-slate-400 hover:border-violet/20'
+                  }`}>
+                  <input type="checkbox" className="accent-violet" checked={form[key]} onChange={set(key)} />
+                  <span className="text-sm">{label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <button type="button" onClick={() => setStep(2)} className="btn-primary w-full justify-center">
+            Next: Add Questions →
+          </button>
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-violet/20 bg-violet/5 p-4">
+            <p className="text-xs font-semibold text-violet-300 mb-3 flex items-center gap-1">
+              <span>⚡</span> AI Generator (Cerebras)
+            </p>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <input className="input" placeholder="Topic" value={aiForm.topic}
+                onChange={(e) => setAiForm({ ...aiForm, topic: e.target.value })} />
+              <select className="input" value={aiForm.difficulty}
+                onChange={(e) => setAiForm({ ...aiForm, difficulty: e.target.value })}>
+                <option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option>
+              </select>
+            </div>
+            <button type="button" onClick={generateAI} disabled={aiLoading}
+              className="btn-secondary w-full justify-center text-sm">
+              {aiLoading ? 'Generating…' : '✨ Generate with AI'}
+            </button>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="label !mb-0">Test Cases</label>
+              <button type="button" onClick={addTc} className="btn-ghost text-xs"><Plus size={13} /> Add</button>
+            </div>
+            <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+              {form.test_cases.map((tc, i) => (
+                <div key={i} className="rounded-lg border border-[rgba(255,255,255,0.06)] p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-400">Case #{i + 1}</span>
+                    <div className="flex items-center gap-3">
+                      <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
+                        <input type="checkbox" className="accent-primary" checked={tc.is_hidden}
+                          onChange={(e) => setTc(i, 'is_hidden', e.target.checked)} /> Hidden
+                      </label>
+                      {form.test_cases.length > 1 && (
+                        <button type="button" onClick={() => removeTc(i)} className="text-rose-400">
+                          <Trash2 size={13} /></button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="label text-[10px]">Input</label>
+                      <textarea className="input font-mono text-xs resize-none" rows={3}
+                        value={tc.input_data} onChange={(e) => setTc(i, 'input_data', e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="label text-[10px]">Expected Output</label>
+                      <textarea className="input font-mono text-xs resize-none" rows={3}
+                        value={tc.expected_output} onChange={(e) => setTc(i, 'expected_output', e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button type="button" onClick={() => setStep(1)} className="btn-secondary flex-1">← Back</button>
+            <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
+            <button type="button" onClick={handleSave} className="btn-primary flex-1">Save Test</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function TestMode() {
+  const [problems, setProblems] = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [search, setSearch]     = useState('')
+  const [showModal, setShowModal] = useState(false)
+
+  const load = () => {
+    setLoading(true)
+    api.get('/problems?mode=test').then((r) => setProblems(r.data)).finally(() => setLoading(false))
+  }
+  useEffect(load, [])
+
+  const handleSave = async (payload) => {
+    try {
+      await api.post('/problems/', payload)
+      toast.success('Test created!')
+      setShowModal(false); load()
+    } catch (err) { toast.error(err.response?.data?.detail || 'Failed') }
+  }
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this test?')) return
+    await api.delete(`/problems/${id}`)
+    toast.success('Deleted'); load()
+  }
+
+  const filtered = problems.filter((p) => p.title.toLowerCase().includes(search.toLowerCase()))
+  if (loading) return <PageLoader />
+
+  return (
+    <div className="space-y-5 animate-fade-in">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Test Mode</h1>
+          <p className="text-slate-400 text-sm mt-0.5">Create proctored tests for students</p>
+        </div>
+        <button onClick={() => setShowModal(true)} className="btn-primary">
+          <Plus size={16} /> Create Test
+        </button>
+      </div>
+
+      <div className="relative max-w-xs">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+        <input className="input pl-8" placeholder="Search tests…" value={search}
+          onChange={(e) => setSearch(e.target.value)} />
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="card text-center py-16">
+          <FlaskConical size={40} className="mx-auto text-slate-600 mb-3" />
+          <p className="text-slate-400">No tests yet.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((p) => (
+            <div key={p.id} className="card-hover">
+              <div className="flex items-start justify-between mb-2">
+                <h3 className="font-semibold text-white text-sm line-clamp-2 flex-1 pr-2">{p.title}</h3>
+                <button onClick={() => handleDelete(p.id)} className="btn-ghost text-rose-400 p-1">
+                  <Trash2 size={14} /></button>
+              </div>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                <DifficultyBadge level={p.difficulty} />
+                <span className="badge-violet badge">{p.test_cases_count} cases</span>
+                {p.fullscreen_required && <span className="badge-violet badge">🔒 Fullscreen</span>}
+                {p.tab_switch_detect   && <span className="badge-yellow badge">⚠ Tab Switch</span>}
+              </div>
+              {p.duration && <p className="text-xs text-slate-500">Duration: {p.duration} min</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Modal open={showModal} onClose={() => setShowModal(false)} title="Create Proctored Test" size="lg">
+        <ProblemForm onSave={handleSave} onCancel={() => setShowModal(false)} />
+      </Modal>
+    </div>
+  )
+}
