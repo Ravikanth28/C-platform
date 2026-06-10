@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: import.meta.env.VITE_API_URL,
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -16,6 +16,7 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
+    console.error('[API Error] Request failed:', err.config?.method?.toUpperCase(), err.config?.url, err.message, err.response?.data);
     if (err.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
@@ -41,8 +42,8 @@ export const downloadFile = async (url, filename) => {
 export const getFileUrl = (url) => {
   if (!url) return url
   if (url.startsWith('/uploads')) {
-    const apiBase = import.meta.env.VITE_API_URL || '/api'
-    const base = apiBase.replace(/\/api\/?$/, '')
+    const apiBase = import.meta.env.VITE_API_URL
+    const base = apiBase ? apiBase.replace(/\/api\/?$/, '') : ''
     return `${base}${url}`
   }
   return url
