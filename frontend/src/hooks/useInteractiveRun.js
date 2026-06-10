@@ -31,8 +31,18 @@ export default function useInteractiveRun() {
     setStatus('compiling')
 
     const token = localStorage.getItem('token') || ''
-    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const url = `${proto}://${window.location.host}/api/submissions/run-interactive?token=${encodeURIComponent(token)}`
+    
+    let wsUrl = ''
+    const apiBase = import.meta.env.VITE_API_URL
+    if (apiBase && apiBase.startsWith('http')) {
+      wsUrl = apiBase.replace(/^http/, 'ws') + '/submissions/run-interactive'
+    } else {
+      const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+      const base = apiBase ? apiBase.replace(/\/$/, '') : '/api'
+      wsUrl = `${proto}://${window.location.host}${base}/submissions/run-interactive`
+    }
+    
+    const url = `${wsUrl}?token=${encodeURIComponent(token)}`
 
     let ws
     try {
