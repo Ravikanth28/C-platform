@@ -131,7 +131,7 @@ def list_submissions(
             "time_taken": s.time_taken,
             "test_cases_passed": s.test_cases_passed,
             "test_cases_total": s.test_cases_total,
-            "submitted_at": s.submitted_at.isoformat(),
+            "submitted_at": s.submitted_at.isoformat() + ("" if s.submitted_at.tzinfo else "Z"),
         }
         for s in query.order_by(models.Submission.submitted_at.desc()).all()
     ]
@@ -174,6 +174,6 @@ def get_submission(
         "tab_switches": s.tab_switches,
         "test_cases_passed": s.test_cases_passed,
         "test_cases_total": s.test_cases_total,
-        "submitted_at": s.submitted_at.isoformat(),
+        "submitted_at": s.submitted_at.isoformat() + ("" if s.submitted_at.tzinfo else "Z"),
         "results": results,
     }

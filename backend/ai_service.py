@@ -14,7 +14,7 @@ from typing import List, Optional
 import httpx
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 _API_URL = "https://api.cerebras.ai/v1/chat/completions"
 _MODEL = os.getenv("CEREBRAS_MODEL", "llama-3.3-70b")

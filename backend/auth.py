@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 import models
 from database import get_db
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 SECRET_KEY = os.getenv("SECRET_KEY", "change-this-secret-key-in-production")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")

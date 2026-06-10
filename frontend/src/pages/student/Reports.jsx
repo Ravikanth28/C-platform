@@ -16,7 +16,7 @@ export default function StudentReports() {
   const load = () => {
     setLoading(true)
     const params = mode ? `?mode=${mode}` : ''
-    api.get(`/reports/${params}`).then((r) => setRows(r.data)).finally(() => setLoading(false))
+    api.get(`/reports${params}`).then((r) => setRows(r.data)).finally(() => setLoading(false))
   }
   useEffect(load, [mode])
 

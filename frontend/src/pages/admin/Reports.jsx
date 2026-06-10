@@ -13,11 +13,12 @@ export default function AdminReports() {
   const [search, setSearch]   = useState('')
   const [detail, setDetail]   = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [studentModal, setStudentModal]   = useState(null)
 
   const load = () => {
     setLoading(true)
     const params = mode ? `?mode=${mode}` : ''
-    api.get(`/reports/${params}`).then((r) => setRows(r.data)).finally(() => setLoading(false))
+    api.get(`/reports${params}`).then((r) => setRows(r.data)).finally(() => setLoading(false))
   }
   useEffect(load, [mode])
 
@@ -36,6 +37,31 @@ export default function AdminReports() {
       r.student_email.toLowerCase().includes(q)
     )
   })
+
+  const grouped = new Map()
+  filtered.forEach(r => {
+    const key = r.student_email || r.student_name
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        student_name: r.student_name,
+        student_email: r.student_email,
+        latest_submission: r,
+        submissions: [r],
+        total_score: r.score,
+      })
+    } else {
+      const group = grouped.get(key)
+      group.submissions.push(r)
+      group.total_score += r.score
+      if (new Date(r.submitted_at) > new Date(group.latest_submission.submitted_at)) {
+        group.latest_submission = r
+      }
+    }
+  })
+  
+  const groupedArray = Array.from(grouped.values()).sort((a, b) => 
+    new Date(b.latest_submission.submitted_at) - new Date(a.latest_submission.submitted_at)
+  )
 
   if (loading) return <PageLoader />
 
@@ -69,52 +95,46 @@ export default function AdminReports() {
               <tr className="table-header">
                 <th className="table-cell">#</th>
                 <th className="table-cell">Student</th>
-                <th className="table-cell">Mode</th>
-                <th className="table-cell">Problem</th>
-                <th className="table-cell">Status</th>
-                <th className="table-cell">Score</th>
-                <th className="table-cell">Time</th>
-                <th className="table-cell">Submitted</th>
-                <th className="table-cell">Report</th>
+                <th className="table-cell">Recent Problem</th>
+                <th className="table-cell">Total Submissions</th>
+                <th className="table-cell">Avg Score</th>
+                <th className="table-cell">Last Active</th>
+                <th className="table-cell">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && (
+              {groupedArray.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="table-cell text-center py-12 text-t4">
-                    No reports found.
+                  <td colSpan={7} className="table-cell text-center py-12 text-t4">
+                    No students found.
                   </td>
                 </tr>
               )}
-              {filtered.map((r, i) => (
-                <tr key={r.submission_id} className="table-row">
+              {groupedArray.map((g, i) => (
+                <tr key={g.student_email || i} className="table-row">
                   <td className="table-cell text-t4 tabular">{i + 1}</td>
                   <td className="table-cell">
                     <div>
-                      <p className="text-t font-medium">{r.student_name}</p>
-                      <p className="text-xs text-t4">{r.student_email}</p>
+                      <p className="text-t font-medium">{g.student_name}</p>
+                      <p className="text-xs text-t4">{g.student_email}</p>
                     </div>
                   </td>
-                  <td className="table-cell"><ModeBadge mode={r.mode} /></td>
-                  <td className="table-cell text-t2 max-w-[180px] truncate">{r.problem_title}</td>
-                  <td className="table-cell"><StatusBadge status={r.status} /></td>
+                  <td className="table-cell text-t2 max-w-[180px] truncate">{g.latest_submission.problem_title}</td>
+                  <td className="table-cell text-t3 tabular">{g.submissions.length}</td>
                   <td className="table-cell">
-                    <span className="tabular" style={{ color: r.score >= 100 ? 'var(--ok)' : r.score > 0 ? 'var(--warn)' : 'var(--err)' }}>
-                      {r.score}%
+                    <span className="tabular" style={{ color: Math.round(g.total_score / g.submissions.length) >= 100 ? 'var(--ok)' : Math.round(g.total_score / g.submissions.length) > 0 ? 'var(--warn)' : 'var(--err)' }}>
+                      {Math.round(g.total_score / g.submissions.length)}%
                     </span>
                   </td>
-                  <td className="table-cell text-t3 tabular">
-                    {r.time_taken != null ? `${Math.floor(r.time_taken / 60)}m ${r.time_taken % 60}s` : '—'}
-                  </td>
                   <td className="table-cell text-t4 text-xs tabular">
-                    {formatDistanceToNow(new Date(r.submitted_at), { addSuffix: true })}
+                    {formatDistanceToNow(new Date(g.latest_submission.submitted_at), { addSuffix: true })}
                   </td>
                   <td className="table-cell">
                     <button
-                      onClick={() => openDetail(r.submission_id)}
+                      onClick={() => setStudentModal(g)}
                       className="btn-secondary btn-sm"
                     >
-                      <Eye size={12} /> View
+                      <Eye size={12} /> View History
                     </button>
                   </td>
                 </tr>
@@ -123,6 +143,42 @@ export default function AdminReports() {
           </table>
         </div>
       </div>
+
+      {/* Student History Modal */}
+      <Modal open={!!studentModal} onClose={() => setStudentModal(null)} title={`${studentModal?.student_name}'s Submissions`} size="xl">
+        {studentModal && (
+          <div className="max-h-[60vh] overflow-y-auto table-container">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="table-header sticky top-0 bg-surface-h">
+                  <th className="table-cell">Mode</th>
+                  <th className="table-cell">Problem</th>
+                  <th className="table-cell">Status</th>
+                  <th className="table-cell">Score</th>
+                  <th className="table-cell">Time</th>
+                  <th className="table-cell">Submitted</th>
+                  <th className="table-cell">Report</th>
+                </tr>
+              </thead>
+              <tbody>
+                {studentModal.submissions.map((r) => (
+                  <tr key={r.submission_id} className="table-row">
+                    <td className="table-cell"><ModeBadge mode={r.mode} /></td>
+                    <td className="table-cell text-t2 max-w-[150px] truncate">{r.problem_title}</td>
+                    <td className="table-cell"><StatusBadge status={r.status} /></td>
+                    <td className="table-cell text-t3 tabular">{r.score}%</td>
+                    <td className="table-cell text-t3 tabular">{r.time_taken != null ? `${Math.floor(r.time_taken/60)}m ${r.time_taken%60}s` : '—'}</td>
+                    <td className="table-cell text-t4 text-xs tabular">{formatDistanceToNow(new Date(r.submitted_at), { addSuffix: true })}</td>
+                    <td className="table-cell">
+                      <button onClick={() => openDetail(r.submission_id)} className="btn-secondary btn-sm"><Eye size={12}/> View</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Modal>
 
       {/* Detail Modal */}
       <Modal

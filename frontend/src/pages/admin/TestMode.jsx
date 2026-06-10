@@ -3,7 +3,7 @@
  * We re-use the ProblemForm component from PracticeMode by passing isTest=true.
  */
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Search, FlaskConical, ShieldCheck } from 'lucide-react'
+import { Plus, Trash2, Search, FlaskConical, ShieldCheck, Edit } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../../api/client'
 import Modal          from '../../components/ui/Modal'
@@ -16,16 +16,18 @@ import { DifficultyBadge } from '../../components/ui/Badge'
 
 const EMPTY_TC = { input_data: '', expected_output: '', is_hidden: false }
 
-function ProblemForm({ onSave, onCancel }) {
+function ProblemForm({ initial, onSave, onCancel }) {
   const [step, setStep] = useState(1)
-  const [form, setForm] = useState({
-    title: '', description: '', topics: '', difficulty: 'medium',
-    duration: 60, is_for_all: true, assigned_user_ids: '',
-    start_time: '', end_time: '',
-    tab_switch_detect: true, copy_paste_disable: true,
-    f12_disable: true, fullscreen_required: true,
-    test_cases: [{ ...EMPTY_TC }],
-  })
+  const [form, setForm] = useState(
+    initial || {
+      title: '', description: '', topics: '', difficulty: 'medium',
+      duration: 60, is_for_all: true, assigned_user_ids: '',
+      start_time: '', end_time: '',
+      tab_switch_detect: true, copy_paste_disable: true,
+      f12_disable: true, fullscreen_required: true,
+      test_cases: [{ ...EMPTY_TC }],
+    }
+  )
   const [aiLoading, setAiLoading] = useState(false)
   const [aiForm, setAiForm] = useState({ topic: '', difficulty: 'medium', description: '' })
 
@@ -220,6 +222,7 @@ export default function TestMode() {
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [editProblem, setEditProblem] = useState(null)
 
   const load = () => {
     setLoading(true)
@@ -229,10 +232,28 @@ export default function TestMode() {
 
   const handleSave = async (payload) => {
     try {
-      await api.post('/problems/', payload)
-      toast.success('Test created!')
+      if (editProblem) {
+        await api.put(`/problems/${editProblem.id}`, payload)
+        toast.success('Test updated!')
+      } else {
+        await api.post('/problems', payload)
+        toast.success('Test created!')
+      }
       setShowModal(false); load()
     } catch (err) { toast.error(err.response?.data?.detail || 'Failed') }
+  }
+
+  const handleEdit = async (id) => {
+    try {
+      const { data } = await api.get(`/problems/${id}`)
+      if (data.start_time) data.start_time = data.start_time.slice(0, 16)
+      if (data.end_time) data.end_time = data.end_time.slice(0, 16)
+      data.assigned_user_ids = ''
+      setEditProblem(data)
+      setShowModal(true)
+    } catch (err) {
+      toast.error('Failed to fetch test details')
+    }
   }
 
   const handleDelete = async (id) => {
@@ -251,7 +272,7 @@ export default function TestMode() {
           <h1 className="h1">Test Mode</h1>
           <p className="section-sub mt-0.5">Create proctored tests for students</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="btn-primary">
+        <button onClick={() => { setEditProblem(null); setShowModal(true); }} className="btn-primary">
           <Plus size={16} /> Create Test
         </button>
       </div>
@@ -273,8 +294,14 @@ export default function TestMode() {
             <div key={p.id} className="card-hover">
               <div className="flex items-start justify-between mb-2">
                 <h3 className="h3 text-sm line-clamp-2 flex-1 pr-2">{p.title}</h3>
-                <button onClick={() => handleDelete(p.id)} className="btn-ghost p-1" style={{ color: 'var(--err)' }}>
-                  <Trash2 size={14} /></button>
+                <div className="flex gap-1 flex-shrink-0">
+                  <button onClick={() => handleEdit(p.id)} className="btn-ghost p-1" style={{ color: 'var(--t2)' }}>
+                    <Edit size={14} />
+                  </button>
+                  <button onClick={() => handleDelete(p.id)} className="btn-ghost p-1" style={{ color: 'var(--err)' }}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
               <div className="flex flex-wrap gap-1.5 mb-2">
                 <DifficultyBadge level={p.difficulty} />
@@ -288,8 +315,8 @@ export default function TestMode() {
         </div>
       )}
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} title="Create Proctored Test" size="lg">
-        <ProblemForm onSave={handleSave} onCancel={() => setShowModal(false)} />
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={editProblem ? "Edit Proctored Test" : "Create Proctored Test"} size="lg">
+        <ProblemForm key={editProblem ? editProblem.id : 'new'} initial={editProblem} onSave={handleSave} onCancel={() => setShowModal(false)} />
       </Modal>
     </div>
   )

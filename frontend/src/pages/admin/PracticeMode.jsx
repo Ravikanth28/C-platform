@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Search, Code2, Wand2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Trash2, Search, Code2, Wand2, Edit, ChevronDown, ChevronUp } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../../api/client'
 import Modal          from '../../components/ui/Modal'
@@ -263,6 +263,7 @@ export default function PracticeMode() {
   const [search, setSearch]     = useState('')
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving]     = useState(false)
+  const [editProblem, setEditProblem] = useState(null)
 
   const load = () => {
     setLoading(true)
@@ -273,14 +274,33 @@ export default function PracticeMode() {
   const handleSave = async (payload) => {
     setSaving(true)
     try {
-      await api.post('/problems/', payload)
-      toast.success('Problem created!')
+      if (editProblem) {
+        await api.put(`/problems/${editProblem.id}`, payload)
+        toast.success('Problem updated!')
+      } else {
+        await api.post('/problems', payload)
+        toast.success('Problem created!')
+      }
       setShowModal(false)
       load()
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to save')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleEdit = async (id) => {
+    try {
+      const { data } = await api.get(`/problems/${id}`)
+      if (data.start_time) data.start_time = data.start_time.slice(0, 16)
+      if (data.end_time) data.end_time = data.end_time.slice(0, 16)
+      // Note: assigned_user_ids is not returned by the GET API currently, so we default to empty string
+      data.assigned_user_ids = ''
+      setEditProblem(data)
+      setShowModal(true)
+    } catch (err) {
+      toast.error('Failed to fetch problem details')
     }
   }
 
@@ -304,7 +324,7 @@ export default function PracticeMode() {
           <h1 className="h1">Practice Mode</h1>
           <p className="section-sub mt-0.5">Create and manage practice problems</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="btn-primary">
+        <button onClick={() => { setEditProblem(null); setShowModal(true); }} className="btn-primary">
           <Plus size={16} /> Create Problem
         </button>
       </div>
@@ -323,13 +343,15 @@ export default function PracticeMode() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((p) => (
-            <ProblemCard key={p.id} problem={p} onDelete={handleDelete} />
+            <ProblemCard key={p.id} problem={p} onEdit={handleEdit} onDelete={handleDelete} />
           ))}
         </div>
       )}
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} title="Create Practice Problem" size="lg">
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={editProblem ? "Edit Practice Problem" : "Create Practice Problem"} size="lg">
         <ProblemForm
+          key={editProblem ? editProblem.id : 'new'}
+          initial={editProblem}
           isTest={false}
           onSave={handleSave}
           onCancel={() => setShowModal(false)}
@@ -339,14 +361,19 @@ export default function PracticeMode() {
   )
 }
 
-function ProblemCard({ problem: p, onDelete }) {
+function ProblemCard({ problem: p, onEdit, onDelete }) {
   return (
     <div className="card-hover">
       <div className="flex items-start justify-between mb-2">
         <h3 className="h3 text-sm leading-snug line-clamp-2 flex-1 pr-2">{p.title}</h3>
-        <button onClick={() => onDelete(p.id)} className="btn-ghost p-1 flex-shrink-0" style={{ color: 'var(--err)' }}>
-          <Trash2 size={14} />
-        </button>
+        <div className="flex gap-1 flex-shrink-0">
+          <button onClick={() => onEdit(p.id)} className="btn-ghost p-1" style={{ color: 'var(--t2)' }}>
+            <Edit size={14} />
+          </button>
+          <button onClick={() => onDelete(p.id)} className="btn-ghost p-1" style={{ color: 'var(--err)' }}>
+            <Trash2 size={14} />
+          </button>
+        </div>
       </div>
       {p.topics && <p className="text-xs text-t4 mb-2">{p.topics}</p>}
       <div className="flex items-center gap-2 flex-wrap mb-3">

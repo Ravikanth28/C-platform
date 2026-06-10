@@ -25,7 +25,7 @@ def _row(s: models.Submission) -> dict:
         "tab_switches": s.tab_switches,
         "test_cases_passed": s.test_cases_passed,
         "test_cases_total": s.test_cases_total,
-        "submitted_at": s.submitted_at.isoformat(),
+        "submitted_at": s.submitted_at.isoformat() + ("" if s.submitted_at.tzinfo else "Z"),
     }
 
 

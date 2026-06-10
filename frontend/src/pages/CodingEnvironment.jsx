@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import Editor from '@monaco-editor/react'
 import {
@@ -12,6 +12,7 @@ import api from '../api/client'
 import { StatusBadge } from '../components/ui/Badge'
 import { PageLoader } from '../components/ui/LoadingSpinner'
 import { useTheme } from '../context/ThemeContext'
+import { useAuth } from '../context/AuthContext'
 
 const DEFAULT_C = `#include <stdio.h>\n\nint main() {\n    // Write your solution here\n    \n    return 0;\n}\n`
 
@@ -21,6 +22,7 @@ export default function CodingEnvironment() {
   const isTestMode = searchParams.get('mode') === 'test'
   const navigate = useNavigate()
   const { isDark } = useTheme()
+  const { user } = useAuth()
 
   const [problem, setProblem]         = useState(null)
   const [allProblems, setAllProblems] = useState([])
@@ -38,6 +40,7 @@ export default function CodingEnvironment() {
   const [customInput, setCustomInput] = useState('')
   const [aiQuestion, setAiQuestion]   = useState('')
   const [aiLoading, setAiLoading]     = useState(false)
+  const [showFullscreenOverlay, setShowFullscreenOverlay] = useState(false)
   const [aiMessages, setAiMessages]   = useState([])
   const [liked, setLiked]             = useState(null)
   const [bookmarked, setBookmarked]   = useState(false)
@@ -73,7 +76,25 @@ export default function CodingEnvironment() {
 
   useEffect(() => {
     if (!isTestMode || !problem) return
-    if (problem.fullscreen_required) requestFullscreen()
+    
+    if (problem.fullscreen_required && !document.fullscreenElement) {
+      setShowFullscreenOverlay(true)
+    }
+    
+    const onFullscreenChange = () => {
+      if (document.fullscreenElement) {
+        setShowFullscreenOverlay(false)
+        setIsFullscreen(true)
+      } else if (problem.fullscreen_required) {
+        setShowFullscreenOverlay(true)
+        setIsFullscreen(false)
+      } else {
+        setIsFullscreen(false)
+      }
+    }
+    
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+
     if (problem.tab_switch_detect) {
       const onVisibility = () => {
         if (document.hidden) {
@@ -85,8 +106,13 @@ export default function CodingEnvironment() {
         }
       }
       document.addEventListener('visibilitychange', onVisibility)
-      return () => document.removeEventListener('visibilitychange', onVisibility)
+      return () => {
+        document.removeEventListener('visibilitychange', onVisibility)
+        document.removeEventListener('fullscreenchange', onFullscreenChange)
+      }
     }
+    
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
   }, [problem, isTestMode])
 
   useEffect(() => {
@@ -94,27 +120,47 @@ export default function CodingEnvironment() {
     const onKeyDown = (e) => {
       if (problem.f12_disable && e.key === 'F12') {
         e.preventDefault()
+        e.stopPropagation()
         toast.error('Developer tools are disabled during this test.')
+      }
+      if (problem.copy_paste_disable && (e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'v' || e.key === 'C' || e.key === 'V')) {
+        e.preventDefault()
+        e.stopPropagation()
+        toast.error('Copy-paste is disabled during this test.')
       }
     }
     const onCopyPaste = (e) => {
       if (problem.copy_paste_disable) {
         e.preventDefault()
+        e.stopPropagation()
         toast.error('Copy-paste is disabled during this test.')
       }
     }
-    const onContext = (e) => { if (problem.f12_disable) e.preventDefault() }
-    document.addEventListener('keydown', onKeyDown)
-    document.addEventListener('copy', onCopyPaste)
-    document.addEventListener('paste', onCopyPaste)
-    document.addEventListener('contextmenu', onContext)
+    const onContext = (e) => { 
+      if (problem.f12_disable) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown, true)
+    document.addEventListener('copy', onCopyPaste, true)
+    document.addEventListener('paste', onCopyPaste, true)
+    document.addEventListener('contextmenu', onContext, true)
     return () => {
-      document.removeEventListener('keydown', onKeyDown)
-      document.removeEventListener('copy', onCopyPaste)
-      document.removeEventListener('paste', onCopyPaste)
-      document.removeEventListener('contextmenu', onContext)
+      document.removeEventListener('keydown', onKeyDown, true)
+      document.removeEventListener('copy', onCopyPaste, true)
+      document.removeEventListener('paste', onCopyPaste, true)
+      document.removeEventListener('contextmenu', onContext, true)
     }
   }, [problem, isTestMode])
+
+  useEffect(() => {
+    return () => {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {})
+      }
+    }
+  }, [])
 
   const requestFullscreen = () => {
     if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen()
@@ -131,7 +177,7 @@ export default function CodingEnvironment() {
   const goPrev = () => { if (prevProblem) navigate(`/problems/${prevProblem.id}${isTestMode ? '?mode=test' : ''}`) }
   const goNext = () => { if (nextProblem) navigate(`/problems/${nextProblem.id}${isTestMode ? '?mode=test' : ''}`) }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (isFinalSubmit = true) => {
     if (!code.trim()) { toast.error('Write some code first!'); return }
     setSubmitting(true)
     const timeTaken = Math.floor((Date.now() - startTimeRef.current) / 1000)
@@ -143,6 +189,13 @@ export default function CodingEnvironment() {
         time_taken: timeTaken,
         tab_switches: tabSwitches,
       })
+      
+      if (isFinalSubmit) {
+        toast.success('Successfully submitted!')
+        navigate(`/${user?.role || 'student'}/reports`)
+        return
+      }
+
       setResult(data)
       setShowResult(true)
       setActiveTab('statement')
@@ -157,6 +210,11 @@ export default function CodingEnvironment() {
 
   const handleRun = async () => {
     if (!code.trim()) { toast.error('Write some code first!'); return }
+    
+    if (!customInput.trim()) {
+      return handleSubmit(false)
+    }
+
     setRunning(true)
     setRunOutput(null)
     setCustomInputOpen(true)
@@ -209,6 +267,36 @@ export default function CodingEnvironment() {
     </div>
   )
   if (!problem) return null
+
+  if (showFullscreenOverlay) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-beige-pg text-t z-[100] fixed inset-0 p-6 text-center">
+        <div className="max-w-md w-full surface-inset border border-line rounded-xl p-8 space-y-6 shadow-xl">
+          <Maximize2 size={40} className="mx-auto" style={{ color: 'var(--warn)' }} />
+          <div>
+            <h2 className="text-xl font-bold mb-2">Fullscreen Required</h2>
+            <p className="text-t3 text-sm">
+              This assessment requires you to be in fullscreen mode to continue. Exiting fullscreen will pause or invalidate your session.
+            </p>
+          </div>
+          <button 
+            className="btn-primary w-full justify-center h-11"
+            onClick={() => {
+              if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen().then(() => {
+                  setShowFullscreenOverlay(false)
+                }).catch(err => {
+                  toast.error("Failed to enter fullscreen.")
+                })
+              }
+            }}
+          >
+            Enter Fullscreen to Start
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <>
@@ -314,7 +402,7 @@ export default function CodingEnvironment() {
               </div>
             )}
             {showResult && result && (
-              <div className="p-4"><SubmissionResult result={result} /></div>
+              <div className="p-4"><SubmissionResult result={result} problem={problem} /></div>
             )}
             {activeTab === 'aihelp' && !showResult && (
               <AiHelpPanel
@@ -465,7 +553,7 @@ export default function CodingEnvironment() {
                 {running ? 'Running…' : 'Run'}
               </button>
               <button
-                onClick={handleSubmit}
+                onClick={() => handleSubmit(true)}
                 disabled={submitting}
                 className="btn-primary btn-sm"
               >
@@ -710,7 +798,10 @@ function AiHelpPanel({ messages, question, setQuestion, onSend, loading }) {
   )
 }
 
-function SubmissionResult({ result }) {
+function SubmissionResult({ result, problem }) {
+  const [expanded, setExpanded] = useState({})
+  const toggle = (i) => setExpanded(p => ({ ...p, [i]: !p[i] }))
+
   const pct = result.total ? Math.round((result.passed / result.total) * 100) : 0
   return (
     <div className="space-y-4">
@@ -748,24 +839,60 @@ function SubmissionResult({ result }) {
         </pre>
       )}
       <div className="space-y-1.5">
-        {result.results?.map((r, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-3 rounded-lg p-2.5 border"
-            style={r.status === 'Passed'
-              ? { borderColor: 'color-mix(in srgb, var(--ok) 15%, transparent)', background: 'color-mix(in srgb, var(--ok) 5%, transparent)' }
-              : { borderColor: 'color-mix(in srgb, var(--err) 15%, transparent)', background: 'color-mix(in srgb, var(--err) 5%, transparent)' }}
-          >
-            {r.status === 'Passed'
-              ? <CheckCircle size={13} className="flex-shrink-0" style={{ color: 'var(--ok)' }} />
-              : <XCircle    size={13} className="flex-shrink-0" style={{ color: 'var(--err)' }} />}
-            <span className="text-xs text-t3 tabular">Case #{i + 1}{r.is_hidden ? ' (hidden)' : ''}</span>
-            <StatusBadge status={r.status} />
-            {r.execution_time != null && (
-              <span className="text-xs text-t4 ml-auto tabular">{r.execution_time.toFixed(1)}ms</span>
-            )}
-          </div>
-        ))}
+        {result.results?.map((r, i) => {
+          const tc = problem?.test_cases?.find(t => t.id === r.test_case_id)
+          const canExpand = !r.is_hidden && tc
+          const isExpanded = expanded[i]
+
+          return (
+            <div
+              key={i}
+              className="rounded-lg border overflow-hidden transition-colors"
+              style={{
+                borderColor: r.status === 'Passed'
+                  ? 'color-mix(in srgb, var(--ok) 15%, transparent)'
+                  : 'color-mix(in srgb, var(--err) 15%, transparent)',
+                background: r.status === 'Passed'
+                  ? 'color-mix(in srgb, var(--ok) 5%, transparent)'
+                  : 'color-mix(in srgb, var(--err) 5%, transparent)'
+              }}
+            >
+              <div
+                className={`flex items-center gap-3 p-2.5 ${canExpand ? 'cursor-pointer hover:bg-black/5 dark:hover:bg-white/5' : ''}`}
+                onClick={() => canExpand && toggle(i)}
+              >
+                {r.status === 'Passed'
+                  ? <CheckCircle size={13} className="flex-shrink-0" style={{ color: 'var(--ok)' }} />
+                  : <XCircle    size={13} className="flex-shrink-0" style={{ color: 'var(--err)' }} />}
+                <span className="text-xs text-t3 tabular flex-1">Case #{i + 1}{r.is_hidden ? ' (hidden)' : ''}</span>
+                <StatusBadge status={r.status} />
+                {r.execution_time != null && (
+                  <span className="text-xs text-t4 w-12 text-right tabular">{r.execution_time.toFixed(1)}ms</span>
+                )}
+                {canExpand && (
+                  <ChevronDown size={14} className={`text-t4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                )}
+              </div>
+              
+              {canExpand && isExpanded && (
+                <div className="p-3 border-t text-xs grid gap-3" style={{ background: 'var(--bg)', borderColor: 'inherit' }}>
+                  <div>
+                    <div className="text-[10px] text-t4 font-semibold uppercase tracking-wider mb-1">Input</div>
+                    <pre className="font-mono text-t2 bg-surface-h border border-line rounded px-2 py-1.5 whitespace-pre-wrap">{tc.input_data}</pre>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-t4 font-semibold uppercase tracking-wider mb-1">Expected Output</div>
+                    <pre className="font-mono text-t2 bg-surface-h border border-line rounded px-2 py-1.5 whitespace-pre-wrap">{tc.expected_output}</pre>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: r.status === 'Passed' ? 'var(--ok)' : 'var(--err)' }}>Actual Output</div>
+                    <pre className="font-mono rounded px-2 py-1.5 whitespace-pre-wrap border" style={{ color: r.status === 'Passed' ? 'var(--ok)' : 'var(--err)', borderColor: r.status === 'Passed' ? 'color-mix(in srgb, var(--ok) 30%, transparent)' : 'color-mix(in srgb, var(--err) 30%, transparent)' }}>{r.actual_output || '(no output)'}</pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
