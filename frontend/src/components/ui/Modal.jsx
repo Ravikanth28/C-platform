@@ -20,15 +20,13 @@ export default function Modal({ open, onClose, title, children, size = 'md' }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div
-        className={`modal-box ${sizeClass} w-full`}
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className={`modal-box ${sizeClass}`} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-semibold text-white">{title}</h2>
+          <h2 className="h3">{title}</h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-t3 hover:text-t hover:bg-surface-h transition-colors"
+            aria-label="Close"
           >
             <X size={16} />
           </button>

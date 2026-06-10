@@ -21,7 +21,7 @@ import CodingEnvironment from './pages/CodingEnvironment'
 
 function RequireAuth({ children, role }) {
   const { user, loading } = useAuth()
-  if (loading) return <div className="flex h-screen items-center justify-center text-slate-400">Loading…</div>
+  if (loading) return <div className="flex h-screen items-center justify-center bg-beige-pg text-t3">Loading…</div>
   if (!user) return <Navigate to="/login" replace />
   if (role && user.role !== role) return <Navigate to={user.role === 'admin' ? '/admin/dashboard' : '/student/dashboard'} replace />
   return children

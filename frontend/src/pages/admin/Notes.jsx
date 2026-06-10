@@ -5,15 +5,15 @@ import {
   FileText, Link2, CheckSquare, Square, Upload, X,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import api from '../../api/client'
+import api, { getFileUrl } from '../../api/client'
 import Modal           from '../../components/ui/Modal'
 import { PageLoader }  from '../../components/ui/LoadingSpinner'
 
 const TYPE_ICONS = {
-  pdf:     <FileText size={16} className="text-rose-400" />,
-  docx:    <FileText size={16} className="text-blue-400" />,
-  youtube: <Youtube  size={16} className="text-red-500" />,
-  link:    <Link2    size={16} className="text-cyan-400" />,
+  pdf:     <FileText size={16} style={{ color: 'var(--err)' }} />,
+  docx:    <FileText size={16} style={{ color: 'var(--info)' }} />,
+  youtube: <Youtube  size={16} style={{ color: 'var(--err)' }} />,
+  link:    <Link2    size={16} style={{ color: 'var(--info)' }} />,
 }
 
 const TYPE_COLORS = {
@@ -120,8 +120,8 @@ export default function AdminNotes() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-white">Notes</h1>
-          <p className="text-slate-400 text-sm mt-0.5">Manage study materials for students</p>
+          <h1 className="h1">Notes</h1>
+          <p className="section-sub mt-0.5">Manage study materials for students</p>
         </div>
         <button onClick={() => setShowModal(true)} className="btn-primary">
           <Plus size={16} /> Upload Note
@@ -131,7 +131,7 @@ export default function AdminNotes() {
       {/* Toolbar */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-0 max-w-xs">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-t4" />
           <input
             className="input pl-8"
             placeholder="Search notes…"
@@ -149,8 +149,8 @@ export default function AdminNotes() {
       {/* Notes grid */}
       {filtered.length === 0 ? (
         <div className="card text-center py-16">
-          <FileText size={40} className="mx-auto text-slate-600 mb-3" />
-          <p className="text-slate-400">No notes yet. Upload your first note!</p>
+          <FileText size={40} className="mx-auto text-t4 mb-3" />
+          <p className="text-t3">No notes yet. Upload your first note!</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -190,9 +190,10 @@ export default function AdminNotes() {
                   onClick={() => setForm({ ...form, upload_type: t })}
                   className={`flex flex-col items-center gap-1.5 rounded-lg p-2.5 border text-xs font-medium transition-all ${
                     form.upload_type === t
-                      ? 'border-primary/60 bg-primary/10 text-primary-400'
-                      : 'border-[rgba(255,255,255,0.06)] text-slate-400 hover:border-primary/30'
+                      ? 'border-line-strong text-brand'
+                      : 'border-line text-t3 hover:border-line-strong'
                   }`}
+                  style={form.upload_type === t ? { background: 'var(--brandGhost)' } : undefined}
                 >
                   {TYPE_ICONS[t]}
                   {t.toUpperCase()}
@@ -207,19 +208,20 @@ export default function AdminNotes() {
               <div
                 {...getRootProps()}
                 className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-                  isDragActive ? 'border-primary/60 bg-primary/5' : 'border-[rgba(255,255,255,0.08)] hover:border-primary/30'
+                  isDragActive ? 'border-line-strong' : 'border-line hover:border-line-strong'
                 }`}
+                style={isDragActive ? { background: 'var(--brandGhost)' } : undefined}
               >
                 <input {...getInputProps()} />
                 {file ? (
-                  <div className="flex items-center justify-center gap-2 text-emerald-400">
+                  <div className="flex items-center justify-center gap-2" style={{ color: 'var(--ok)' }}>
                     <FileText size={16} />
                     <span className="text-sm truncate">{file.name}</span>
                     <button type="button" onClick={(e) => { e.stopPropagation(); setFile(null) }}
-                      className="text-slate-400 hover:text-white"><X size={14} /></button>
+                      className="text-t3 hover:text-t"><X size={14} /></button>
                   </div>
                 ) : (
-                  <div className="text-slate-400 text-sm">
+                  <div className="text-t3 text-sm">
                     <Upload size={24} className="mx-auto mb-2 opacity-50" />
                     Drag & drop or click to select {form.upload_type.toUpperCase()}
                   </div>
@@ -277,32 +279,33 @@ export default function AdminNotes() {
 
 function NoteCard({ note, selected, onToggle, onDelete }) {
   return (
-    <div className={`card-hover relative ${selected ? 'border-primary/50 bg-primary/5' : ''}`}>
+    <div className={`card-hover relative ${selected ? 'border-line-strong' : ''}`}
+      style={selected ? { background: 'var(--brandGhost)' } : undefined}>
       {/* Checkbox */}
       <button
         onClick={onToggle}
-        className="absolute top-3 right-3 text-slate-500 hover:text-primary transition-colors"
+        className="absolute top-3 right-3 text-t4 hover:text-brand transition-colors"
       >
-        {selected ? <CheckSquare size={16} className="text-primary" /> : <Square size={16} />}
+        {selected ? <CheckSquare size={16} className="text-brand" /> : <Square size={16} />}
       </button>
 
       {/* Type icon */}
       <div className="flex items-center gap-2 mb-3">
-        <div className="w-9 h-9 rounded-lg bg-dark-400 flex items-center justify-center">
-          {TYPE_ICONS[note.upload_type] || <FileText size={16} className="text-slate-400" />}
+        <div className="w-9 h-9 rounded-lg bg-surface-h flex items-center justify-center">
+          {TYPE_ICONS[note.upload_type] || <FileText size={16} className="text-t3" />}
         </div>
         <span className={`badge ${TYPE_COLORS[note.upload_type] || 'badge-blue'} text-[10px]`}>
           {note.upload_type?.toUpperCase()}
         </span>
       </div>
 
-      <h3 className="font-semibold text-white text-sm leading-snug mb-1 pr-6 line-clamp-2">{note.title}</h3>
+      <h3 className="h3 text-sm leading-snug mb-1 pr-6 line-clamp-2">{note.title}</h3>
       {note.description && (
-        <p className="text-xs text-slate-400 line-clamp-2 mb-3">{note.description}</p>
+        <p className="text-xs text-t3 line-clamp-2 mb-3">{note.description}</p>
       )}
 
       {/* Analytics */}
-      <div className="flex items-center gap-4 text-xs text-slate-500 mb-3">
+      <div className="flex items-center gap-4 text-xs text-t4 mb-3 tabular">
         <span className="flex items-center gap-1"><Eye size={12} /> {note.view_count}</span>
         <span className="flex items-center gap-1"><Download size={12} /> {note.download_count}</span>
         {note.is_for_all
@@ -313,18 +316,18 @@ function NoteCard({ note, selected, onToggle, onDelete }) {
 
       <div className="flex gap-2">
         {note.file_url && (
-          <a href={note.file_url} target="_blank" rel="noreferrer"
-            className="btn-secondary flex-1 justify-center text-xs py-1.5">
+          <a href={getFileUrl(note.file_url)} target="_blank" rel="noreferrer"
+            className="btn-secondary btn-sm flex-1 justify-center">
             <Eye size={12} /> View
           </a>
         )}
         {note.yt_link && (
           <a href={note.yt_link} target="_blank" rel="noreferrer"
-            className="btn-secondary flex-1 justify-center text-xs py-1.5">
+            className="btn-secondary btn-sm flex-1 justify-center">
             <Youtube size={12} /> Watch
           </a>
         )}
-        <button onClick={onDelete} className="btn-ghost text-rose-400 hover:text-rose px-2">
+        <button onClick={onDelete} className="btn-ghost px-2" style={{ color: 'var(--err)' }}>
           <Trash2 size={14} />
         </button>
       </div>

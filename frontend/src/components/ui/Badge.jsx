@@ -1,11 +1,13 @@
 export default function Badge({ variant = 'blue', children }) {
   const cls = {
     blue:   'badge-blue',
+    brand:  'badge-brand',
     green:  'badge-green',
     red:    'badge-red',
     yellow: 'badge-yellow',
     cyan:   'badge-cyan',
     violet: 'badge-violet',
+    gray:   'badge-gray',
   }[variant] || 'badge-blue'
 
   return <span className={cls}>{children}</span>
@@ -18,7 +20,7 @@ export function StatusBadge({ status }) {
     'Time Limit Exceeded': 'yellow',
     'Compilation Error':   'violet',
     'Runtime Error':       'red',
-    Pending:               'cyan',
+    Pending:               'gray',
     Passed:                'green',
     Failed:                'red',
   }

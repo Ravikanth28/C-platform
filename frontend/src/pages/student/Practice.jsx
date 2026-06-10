@@ -43,13 +43,13 @@ export default function StudentPractice() {
   return (
     <div className="space-y-5 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-white">Practice</h1>
-        <p className="text-slate-400 text-sm mt-0.5">Sharpen your C programming skills</p>
+        <h1 className="h1">Practice</h1>
+        <p className="section-sub mt-0.5">Sharpen your C programming skills</p>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-0 max-w-xs">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-t4" />
           <input className="input pl-8" placeholder="Search problems…" value={search}
             onChange={(e) => setSearch(e.target.value)} />
         </div>
@@ -63,8 +63,8 @@ export default function StudentPractice() {
 
       {filtered.length === 0 ? (
         <div className="card text-center py-16">
-          <Code2 size={40} className="mx-auto text-slate-600 mb-3" />
-          <p className="text-slate-400">No practice problems available.</p>
+          <Code2 size={40} className="mx-auto text-t4 mb-3" />
+          <p className="text-t3">No practice problems available.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -73,12 +73,12 @@ export default function StudentPractice() {
             return (
               <div key={p.id} className="card-hover flex flex-col">
                 <div className="flex items-start justify-between mb-2">
-                  <h3 className="font-semibold text-white text-sm line-clamp-2 flex-1 pr-2">{p.title}</h3>
+                  <h3 className="h3 line-clamp-2 flex-1 pr-2">{p.title}</h3>
                   {sub && (
                     <StatusBadge status={sub.status} />
                   )}
                 </div>
-                {p.topics && <p className="text-xs text-slate-500 mb-2">{p.topics}</p>}
+                {p.topics && <p className="text-xs text-t4 mb-2">{p.topics}</p>}
                 <div className="flex items-center gap-2 flex-wrap mb-3">
                   <DifficultyBadge level={p.difficulty} />
                   <span className="badge-blue badge">{p.test_cases_count} cases</span>
@@ -89,12 +89,12 @@ export default function StudentPractice() {
                   )}
                 </div>
                 {sub && (
-                  <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-2">
+                  <div className="flex items-center gap-1.5 text-xs text-t4 mb-2">
                     {sub.status === 'Accepted'
-                      ? <CheckCircle size={12} className="text-emerald-400" />
-                      : <div className="w-3 h-3 rounded-full bg-amber/40" />
+                      ? <CheckCircle size={12} style={{ color: 'var(--ok)' }} />
+                      : <div className="w-3 h-3 rounded-full" style={{ background: 'color-mix(in srgb, var(--warn) 40%, transparent)' }} />
                     }
-                    Last score: <span className="text-amber-400 font-medium">{sub.score}%</span>
+                    Last score: <span className="font-medium tabular" style={{ color: 'var(--warn)' }}>{sub.score}%</span>
                   </div>
                 )}
                 <button

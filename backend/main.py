@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from database import Base, engine
 from routers import admin, ai_router, auth, notes, problems, reports, students, submissions
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 # ── Create all tables ──────────────────────────────────────────────────────
 try:

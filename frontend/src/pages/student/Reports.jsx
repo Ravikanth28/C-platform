@@ -16,7 +16,7 @@ export default function StudentReports() {
   const load = () => {
     setLoading(true)
     const params = mode ? `?mode=${mode}` : ''
-    api.get(`/reports/${params}`).then((r) => setRows(r.data)).finally(() => setLoading(false))
+    api.get(`/reports${params}`).then((r) => setRows(r.data)).finally(() => setLoading(false))
   }
   useEffect(load, [mode])
 
@@ -33,8 +33,8 @@ export default function StudentReports() {
   return (
     <div className="space-y-5 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-white">My Reports</h1>
-        <p className="text-slate-400 text-sm mt-0.5">Your submission history and results</p>
+        <h1 className="h1">My Reports</h1>
+        <p className="section-sub mt-0.5">Your submission history and results</p>
       </div>
 
       <div className="flex gap-2">
@@ -62,24 +62,24 @@ export default function StudentReports() {
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={9} className="table-cell text-center py-12 text-slate-500">No submissions yet.</td></tr>
+                <tr><td colSpan={9} className="table-cell text-center py-12 text-t4">No submissions yet.</td></tr>
               )}
               {rows.map((r, i) => (
                 <tr key={r.submission_id} className="table-row">
-                  <td className="table-cell text-slate-500">{i + 1}</td>
-                  <td className="table-cell text-white font-medium">{r.problem_title}</td>
+                  <td className="table-cell text-t4 tabular">{i + 1}</td>
+                  <td className="table-cell text-t font-medium">{r.problem_title}</td>
                   <td className="table-cell"><ModeBadge mode={r.mode} /></td>
                   <td className="table-cell"><StatusBadge status={r.status} /></td>
                   <td className="table-cell">
-                    <span className={r.score >= 100 ? 'text-emerald-400' : r.score > 0 ? 'text-amber-400' : 'text-rose-400'}>
+                    <span className="tabular" style={{ color: r.score >= 100 ? 'var(--ok)' : r.score > 0 ? 'var(--warn)' : 'var(--err)' }}>
                       {r.score}%
                     </span>
                   </td>
-                  <td className="table-cell text-slate-400">{r.test_cases_passed}/{r.test_cases_total}</td>
-                  <td className="table-cell text-slate-400">
+                  <td className="table-cell text-t3 tabular">{r.test_cases_passed}/{r.test_cases_total}</td>
+                  <td className="table-cell text-t3 tabular">
                     {r.time_taken != null ? `${Math.floor(r.time_taken / 60)}m ${r.time_taken % 60}s` : '—'}
                   </td>
-                  <td className="table-cell text-slate-500 text-xs">
+                  <td className="table-cell text-t4 text-xs tabular">
                     {formatDistanceToNow(new Date(r.submitted_at), { addSuffix: true })}
                   </td>
                   <td className="table-cell">
@@ -119,27 +119,27 @@ function ReportDetail({ report: r }) {
           ['Passed',  `${passed}/${total}`],
           ['Time',    r.time_taken != null ? `${Math.floor(r.time_taken / 60)}m ${r.time_taken % 60}s` : '—'],
         ].map(([label, val, el]) => (
-          <div key={label} className="rounded-lg bg-dark-200 border border-[rgba(255,255,255,0.05)] p-3">
-            <p className="text-xs text-slate-500 mb-1">{label}</p>
-            {el || <p className="text-sm font-semibold text-white">{val}</p>}
+          <div key={label} className="rounded-lg surface-inset p-3">
+            <p className="text-xs text-t4 mb-1">{label}</p>
+            {el || <p className="text-sm font-semibold text-t">{val}</p>}
           </div>
         ))}
       </div>
 
       <div>
-        <div className="flex justify-between text-xs text-slate-400 mb-1.5">
-          <span>Progress</span><span>{pct}%</span>
+        <div className="flex justify-between text-xs text-t3 mb-1.5">
+          <span>Progress</span><span className="tabular">{pct}%</span>
         </div>
-        <div className="h-2 rounded-full bg-dark-400 overflow-hidden">
+        <div className="h-2 rounded-full surface-inset overflow-hidden">
           <div className="h-full rounded-full" style={{
             width: `${pct}%`,
-            background: pct === 100 ? '#10b981' : pct > 50 ? '#f59e0b' : '#f43f5e',
+            background: pct === 100 ? 'var(--ok)' : pct > 50 ? 'var(--warn)' : 'var(--err)',
           }} />
         </div>
       </div>
 
       {r.tab_switches > 0 && (
-        <div className="p-3 rounded-lg bg-amber/8 border border-amber/20 text-amber-400 text-sm">
+        <div className="p-3 rounded-lg border border-line text-sm" style={{ background: 'color-mix(in srgb, var(--warn) 12%, transparent)', color: 'var(--warn)' }}>
           ⚠ Tab switches recorded: {r.tab_switches}
         </div>
       )}
@@ -149,14 +149,14 @@ function ReportDetail({ report: r }) {
           <p className="label">Test Case Results</p>
           <div className="space-y-1.5 max-h-48 overflow-y-auto">
             {r.results.map((res, i) => (
-              <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-dark-200">
+              <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg surface-inset">
                 {res.status === 'Passed'
-                  ? <CheckCircle size={13} className="text-emerald-400" />
-                  : <XCircle    size={13} className="text-rose-400" />}
-                <span className="text-xs text-slate-400">Case #{i + 1}</span>
+                  ? <CheckCircle size={13} style={{ color: 'var(--ok)' }} />
+                  : <XCircle    size={13} style={{ color: 'var(--err)' }} />}
+                <span className="text-xs text-t3">Case #{i + 1}</span>
                 <StatusBadge status={res.status} />
                 {res.execution_time != null && (
-                  <span className="text-xs text-slate-500 ml-auto flex items-center gap-1">
+                  <span className="text-xs text-t4 ml-auto flex items-center gap-1 tabular">
                     <Clock size={10} />{res.execution_time.toFixed(1)}ms
                   </span>
                 )}
@@ -172,7 +172,7 @@ function ReportDetail({ report: r }) {
             <Code2 size={13} /> {showCode ? 'Hide' : 'View'} My Code
           </button>
           {showCode && (
-            <pre className="mt-2 p-3 rounded-lg bg-[#0a0e18] border border-[rgba(255,255,255,0.06)] text-xs text-slate-300 font-mono overflow-x-auto max-h-64">
+            <pre className="mt-2 p-3 rounded-lg surface-inset text-xs text-t2 font-mono overflow-x-auto max-h-64">
               {r.code}
             </pre>
           )}
