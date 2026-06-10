@@ -26,6 +26,7 @@ export default function useInteractiveRun() {
   const [output, setOutput]   = useState('')
   const [status, setStatus]   = useState('idle')
   const [exitCode, setExitCode] = useState(null)
+  const [compileError, setCompileError] = useState(null)
   const wsRef = useRef(null)
   const modeRef = useRef('pty')      // 'pipe' has no terminal echo → echo locally
   const startedRef = useRef(false)   // did we ever receive 'started'?
@@ -42,6 +43,7 @@ export default function useInteractiveRun() {
     closeWs()
     setOutput('')
     setExitCode(null)
+    setCompileError(null)
     setStatus('compiling')
     startedRef.current = false
 
@@ -74,7 +76,7 @@ export default function useInteractiveRun() {
         case 'stdout':
           setOutput((o) => o + msg.data); setStatus('running'); break
         case 'compile_error':
-          setOutput(msg.data || 'Compilation failed'); setStatus('error'); break
+          setOutput(msg.data || 'Compilation failed'); setCompileError(msg.data || ''); setStatus('error'); break
         case 'error':
           setOutput((o) => (o ? o + '\n' : '') + (msg.data || 'Runtime error')); setStatus('error'); break
         case 'exit':
@@ -137,5 +139,5 @@ export default function useInteractiveRun() {
 
   useEffect(() => closeWs, [])
 
-  return { output, status, exitCode, start, sendInput, stop, reset }
+  return { output, status, exitCode, compileError, start, sendInput, stop, reset }
 }

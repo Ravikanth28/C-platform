@@ -3,7 +3,7 @@
  * We re-use the ProblemForm component from PracticeMode by passing isTest=true.
  */
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Search, FlaskConical, ShieldCheck, Edit } from 'lucide-react'
+import { Plus, Trash2, Search, FlaskConical, ShieldCheck, Edit, Copy, Power } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../../api/client'
 import Modal          from '../../components/ui/Modal'
@@ -221,14 +221,27 @@ export default function TestMode() {
   const [problems, setProblems] = useState([])
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
+  const [showInactive, setShowInactive] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [editProblem, setEditProblem] = useState(null)
 
   const load = () => {
     setLoading(true)
-    api.get('/problems?mode=test').then((r) => setProblems(r.data)).finally(() => setLoading(false))
+    api.get('/problems?mode=test&include_inactive=true').then((r) => setProblems(r.data)).finally(() => setLoading(false))
   }
   useEffect(load, [])
+
+  const handleDuplicate = async (id) => {
+    try { await api.post(`/problems/${id}/duplicate`); toast.success('Test duplicated'); load() }
+    catch { toast.error('Failed to duplicate') }
+  }
+  const handleToggleActive = async (p) => {
+    try {
+      await api.patch(`/problems/${p.id}/active`, { is_active: !p.is_active })
+      toast.success(p.is_active ? 'Test deactivated' : 'Test activated')
+      load()
+    } catch { toast.error('Failed to update status') }
+  }
 
   const handleSave = async (payload) => {
     try {
@@ -256,13 +269,10 @@ export default function TestMode() {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this test?')) return
-    await api.delete(`/problems/${id}`)
-    toast.success('Deleted'); load()
-  }
-
-  const filtered = problems.filter((p) => p.title.toLowerCase().includes(search.toLowerCase()))
+  const filtered = problems.filter((p) =>
+    p.title.toLowerCase().includes(search.toLowerCase()) && (showInactive || p.is_active)
+  )
+  const inactiveCount = problems.filter((p) => !p.is_active).length
   if (loading) return <PageLoader />
 
   return (
@@ -277,10 +287,17 @@ export default function TestMode() {
         </button>
       </div>
 
-      <div className="relative max-w-xs">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-t4" />
-        <input className="input pl-8" placeholder="Search tests…" value={search}
-          onChange={(e) => setSearch(e.target.value)} />
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative max-w-xs flex-1 min-w-[180px]">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-t4" />
+          <input className="input pl-8" placeholder="Search tests…" value={search}
+            onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        {inactiveCount > 0 && (
+          <button onClick={() => setShowInactive(v => !v)} className={showInactive ? 'tab-active' : 'tab-inactive'}>
+            {showInactive ? 'Hide' : 'Show'} inactive ({inactiveCount})
+          </button>
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -291,15 +308,19 @@ export default function TestMode() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((p) => (
-            <div key={p.id} className="card-hover">
+            <div key={p.id} className="card" style={p.is_active ? undefined : { opacity: 0.62 }}>
               <div className="flex items-start justify-between mb-2">
                 <h3 className="h3 text-sm line-clamp-2 flex-1 pr-2">{p.title}</h3>
-                <div className="flex gap-1 flex-shrink-0">
-                  <button onClick={() => handleEdit(p.id)} className="btn-ghost p-1" style={{ color: 'var(--t2)' }}>
+                <div className="flex gap-0.5 flex-shrink-0">
+                  <button onClick={() => handleEdit(p.id)} title="Edit" className="btn-ghost p-1" style={{ color: 'var(--t2)' }}>
                     <Edit size={14} />
                   </button>
-                  <button onClick={() => handleDelete(p.id)} className="btn-ghost p-1" style={{ color: 'var(--err)' }}>
-                    <Trash2 size={14} />
+                  <button onClick={() => handleDuplicate(p.id)} title="Duplicate" className="btn-ghost p-1" style={{ color: 'var(--t2)' }}>
+                    <Copy size={14} />
+                  </button>
+                  <button onClick={() => handleToggleActive(p)} title={p.is_active ? 'Deactivate' : 'Activate'} className="btn-ghost p-1"
+                    style={{ color: p.is_active ? 'var(--err)' : 'var(--ok)' }}>
+                    <Power size={14} />
                   </button>
                 </div>
               </div>
@@ -308,6 +329,7 @@ export default function TestMode() {
                 <span className="badge-violet badge tabular">{p.test_cases_count} cases</span>
                 {p.fullscreen_required && <span className="badge-violet badge">🔒 Fullscreen</span>}
                 {p.tab_switch_detect   && <span className="badge-yellow badge">⚠ Tab Switch</span>}
+                {!p.is_active && <span className="badge-gray badge">Inactive</span>}
               </div>
               {p.duration && <p className="text-xs text-t4 tabular">Duration: {p.duration} min</p>}
             </div>

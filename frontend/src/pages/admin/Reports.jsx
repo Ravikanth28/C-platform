@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Search, Eye, CheckCircle, XCircle, Clock, Code2, Download } from 'lucide-react'
+import { Search, Eye, CheckCircle, XCircle, Clock, Code2, Download, Sparkles } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
 import api, { downloadFile } from '../../api/client'
@@ -209,6 +209,21 @@ export default function AdminReports() {
 
 function ReportDetail({ report: r }) {
   const [showCode, setShowCode] = useState(false)
+  const [fb, setFb] = useState(r.feedback || '')
+  const [savingFb, setSavingFb] = useState(false)
+  const [suggesting, setSuggesting] = useState(false)
+  const saveFb = async () => {
+    setSavingFb(true)
+    try { await api.post(`/submissions/${r.submission_id}/feedback`, { feedback: fb }); toast.success('Feedback saved') }
+    catch { toast.error('Failed to save feedback') }
+    finally { setSavingFb(false) }
+  }
+  const suggestFb = async () => {
+    setSuggesting(true)
+    try { const { data } = await api.post(`/submissions/${r.submission_id}/feedback/suggest`); setFb(data.suggestion || ''); toast.success('AI draft ready — edit & save') }
+    catch (e) { toast.error(e.response?.status === 502 ? 'AI not configured on the server' : 'Could not generate') }
+    finally { setSuggesting(false) }
+  }
   const passed  = r.test_cases_passed
   const total   = r.test_cases_total
   const pct     = total ? Math.round((passed / total) * 100) : 0
@@ -294,6 +309,21 @@ function ReportDetail({ report: r }) {
           )}
         </div>
       )}
+
+      {/* Teacher feedback */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <p className="label !mb-0">Feedback to student</p>
+          <button onClick={suggestFb} disabled={suggesting} className="btn-ghost btn-sm" style={{ color: 'var(--d-purple)' }}>
+            <Sparkles size={13} /> {suggesting ? 'Thinking…' : 'AI suggest'}
+          </button>
+        </div>
+        <textarea className="input resize-none" rows={3} value={fb} onChange={(e) => setFb(e.target.value)}
+          placeholder="Write feedback the student will see in their report…" />
+        <div className="flex justify-end mt-2">
+          <button className="btn-primary btn-sm" onClick={saveFb} disabled={savingFb}>{savingFb ? 'Saving…' : 'Save feedback'}</button>
+        </div>
+      </div>
     </div>
   )
 }

@@ -2,6 +2,7 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import models
@@ -10,6 +11,10 @@ from auth import get_admin_user, get_current_user
 from database import get_db
 
 router = APIRouter()
+
+
+class ActiveUpdate(BaseModel):
+    is_active: bool
 
 
 def _problem_dict(p: models.Problem) -> dict:
@@ -86,10 +91,14 @@ def create_problem(
 @router.get("")
 def list_problems(
     mode: Optional[str] = None,
+    include_inactive: bool = False,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    query = db.query(models.Problem).filter(models.Problem.is_active == True)
+    query = db.query(models.Problem)
+    # students never see inactive; admins can opt-in to manage them
+    if not (include_inactive and current_user.role == "admin"):
+        query = query.filter(models.Problem.is_active == True)
     if mode:
         query = query.filter(models.Problem.mode == mode)
 
@@ -175,7 +184,56 @@ def update_problem(
     return _problem_dict(p)
 
 
-# ──────────────────────── Delete ──────────────────────────────────────────
+# ──────────────────────── Duplicate ───────────────────────────────────────
+
+@router.post("/{problem_id}/duplicate", status_code=201)
+def duplicate_problem(
+    problem_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_admin_user),
+):
+    p = db.query(models.Problem).filter(models.Problem.id == problem_id).first()
+    if not p:
+        raise HTTPException(404, "Problem not found")
+    clone = models.Problem(
+        title=f"{p.title} (copy)", description=p.description, topics=p.topics,
+        mode=p.mode, difficulty=p.difficulty, start_time=p.start_time, end_time=p.end_time,
+        duration=p.duration, is_for_all=p.is_for_all, created_by=current_user.id,
+        is_active=True,
+        tab_switch_detect=p.tab_switch_detect, copy_paste_disable=p.copy_paste_disable,
+        f12_disable=p.f12_disable, fullscreen_required=p.fullscreen_required,
+    )
+    db.add(clone)
+    db.flush()
+    for tc in p.test_cases:
+        db.add(models.TestCase(
+            problem_id=clone.id, input_data=tc.input_data, expected_output=tc.expected_output,
+            is_hidden=tc.is_hidden, order_index=tc.order_index,
+        ))
+    db.commit()
+    db.refresh(clone)
+    return _problem_dict(clone)
+
+
+# ──────────────────────── Activate / Deactivate ───────────────────────────
+
+@router.patch("/{problem_id}/active")
+def set_active(
+    problem_id: int,
+    payload: ActiveUpdate,
+    db: Session = Depends(get_db),
+    _admin=Depends(get_admin_user),
+):
+    p = db.query(models.Problem).filter(models.Problem.id == problem_id).first()
+    if not p:
+        raise HTTPException(404, "Problem not found")
+    p.is_active = payload.is_active
+    db.commit()
+    db.refresh(p)
+    return _problem_dict(p)
+
+
+# ──────────────────────── Delete (soft — deactivate) ──────────────────────
 
 @router.delete("/{problem_id}")
 def delete_problem(
@@ -188,4 +246,4 @@ def delete_problem(
         raise HTTPException(404, "Problem not found")
     p.is_active = False
     db.commit()
-    return {"detail": "Deleted"}
+    return {"detail": "Deactivated"}

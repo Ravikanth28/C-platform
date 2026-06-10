@@ -22,6 +22,37 @@ except Exception as _db_exc:
     import logging
     logging.warning(f"DB create_all failed (configure DATABASE_URL in .env): {_db_exc}")
 
+
+def _lightweight_migrate():
+    """Add new columns to existing tables (no Alembic) + backfill invite codes."""
+    import logging
+    import secrets
+    from sqlalchemy import text
+    stmts = [
+        "ALTER TABLE classes ADD COLUMN invite_code VARCHAR(12)",
+        "ALTER TABLE submissions ADD COLUMN feedback TEXT",
+    ]
+    with engine.begin() as conn:
+        for s in stmts:
+            try:
+                conn.execute(text(s))
+            except Exception:
+                pass  # column already exists
+        try:
+            rows = conn.execute(text("SELECT id FROM classes WHERE invite_code IS NULL OR invite_code=''")).fetchall()
+            for (cid,) in rows:
+                conn.execute(text("UPDATE classes SET invite_code=:c WHERE id=:i"),
+                             {"c": secrets.token_hex(3).upper(), "i": cid})
+        except Exception as e:
+            logging.warning(f"invite-code backfill skipped: {e}")
+
+
+try:
+    _lightweight_migrate()
+except Exception as _mig_exc:
+    import logging
+    logging.warning(f"lightweight migrate skipped: {_mig_exc}")
+
 # ── Ensure upload directory exists ────────────────────────────────────────
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
 os.makedirs(os.path.join(UPLOAD_DIR, "notes"), exist_ok=True)

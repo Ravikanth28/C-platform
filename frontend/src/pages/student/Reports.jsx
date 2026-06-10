@@ -191,6 +191,13 @@ function ReportDetail({ report: r }) {
         </div>
       )}
 
+      {r.feedback && (
+        <div className="rounded-lg border p-3" style={{ borderColor: 'color-mix(in srgb, var(--brand) 30%, transparent)', background: 'var(--brandGhost)' }}>
+          <p className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--brand)' }}>Teacher feedback</p>
+          <p className="text-[13px] text-t2 whitespace-pre-wrap leading-relaxed">{r.feedback}</p>
+        </div>
+      )}
+
       {r.results?.length > 0 && (
         <div>
           <p className="label">Test Case Results</p>

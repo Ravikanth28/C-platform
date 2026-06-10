@@ -1,5 +1,6 @@
 """Classes, assignments, and analytics — shared by admins and students."""
 import datetime
+import secrets
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -38,11 +39,20 @@ def _class_dict(c: models.Class) -> dict:
         "id": c.id,
         "name": c.name,
         "description": c.description,
+        "invite_code": c.invite_code,
         "member_ids": member_ids,
         "member_count": len(member_ids),
         "assignment_count": len(c.assignments),
         "created_at": _iso(c.created_at),
     }
+
+
+def _gen_code(db) -> str:
+    for _ in range(10):
+        code = secrets.token_hex(3).upper()  # 6 hex chars, e.g. 'A1B2C3'
+        if not db.query(models.Class).filter(models.Class.invite_code == code).first():
+            return code
+    return secrets.token_hex(4).upper()
 
 
 def _assignment_admin_dict(db: Session, a: models.Assignment) -> dict:
@@ -97,6 +107,38 @@ class AssignmentCreate(BaseModel):
     problem_ids: List[int] = []
 
 
+class JoinRequest(BaseModel):
+    code: str
+
+
+@router.post("/join")
+def join_class(payload: JoinRequest, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Student self-enrolls into a class via its invite code."""
+    code = (payload.code or "").strip().upper()
+    if not code:
+        raise HTTPException(400, "Enter an invite code")
+    c = db.query(models.Class).filter(models.Class.invite_code == code).first()
+    if not c:
+        raise HTTPException(404, "Invalid invite code")
+    existing = db.query(models.ClassMember).filter_by(class_id=c.id, user_id=user.id).first()
+    if existing:
+        return {"joined": False, "class_name": c.name, "message": "You're already in this class"}
+    db.add(models.ClassMember(class_id=c.id, user_id=user.id))
+    db.commit()
+    return {"joined": True, "class_name": c.name}
+
+
+@router.post("/classes/{class_id}/regenerate-code")
+def regenerate_code(class_id: int, db: Session = Depends(get_db), _admin=Depends(get_admin_user)):
+    c = db.query(models.Class).filter(models.Class.id == class_id).first()
+    if not c:
+        raise HTTPException(404, "Class not found")
+    c.invite_code = _gen_code(db)
+    db.commit()
+    db.refresh(c)
+    return _class_dict(c)
+
+
 # ──────────────────────────── pickers (admin) ──────────────────────────────
 
 @router.get("/students")
@@ -132,7 +174,7 @@ def list_all_problems(db: Session = Depends(get_db), _admin=Depends(get_admin_us
 
 @router.post("/classes", status_code=201)
 def create_class(payload: ClassCreate, db: Session = Depends(get_db), admin=Depends(get_admin_user)):
-    c = models.Class(name=payload.name, description=payload.description, created_by=admin.id)
+    c = models.Class(name=payload.name, description=payload.description, created_by=admin.id, invite_code=_gen_code(db))
     db.add(c)
     db.flush()
     for uid in set(payload.member_ids):
@@ -176,7 +218,7 @@ def seed_demo(db: Session = Depends(get_db), admin=Depends(get_admin_user)):
     if db.query(models.Class).count() > 0:
         return {"created": False, "message": "Classes already exist"}
     students = db.query(models.User).filter(models.User.role == models.UserRole.student).all()
-    klass = models.Class(name="C Programming 101", description="Intro cohort", created_by=admin.id)
+    klass = models.Class(name="C Programming 101", description="Intro cohort", created_by=admin.id, invite_code=_gen_code(db))
     db.add(klass)
     db.flush()
     for s in students:

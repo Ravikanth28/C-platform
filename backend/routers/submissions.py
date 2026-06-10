@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 import models
 import schemas
-from auth import ALGORITHM, SECRET_KEY, get_current_user
+from auth import ALGORITHM, SECRET_KEY, get_admin_user, get_current_user
 from code_runner import _normalize, compile_code, judge_submission, run_once
 from database import get_db
 from interactive_runner import make_session
@@ -191,14 +191,16 @@ def run_code(
 ):
     """Compile and run code against custom input (no submission stored, no grading)."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        exe, compile_error = compile_code(payload.code, tmpdir)
+        exe, compile_msg = compile_code(payload.code, tmpdir)
         if not exe:
-            return {"status": "Compilation Error", "output": compile_error, "time_ms": 0}
+            return {"status": "Compilation Error", "output": compile_msg, "time_ms": 0}
         result = run_once(exe, payload.custom_input)
         return {
             "status": result["status"],
             "output": result["output"],
             "time_ms": result["time_ms"],
+            "mem_kb": result.get("mem_kb"),
+            "warnings": compile_msg,
         }
 
 
@@ -214,9 +216,9 @@ def run_samples(
     student self-check tool, not a submission.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
-        exe, compile_error = compile_code(payload.code, tmpdir)
+        exe, compile_msg = compile_code(payload.code, tmpdir)
         if not exe:
-            return {"status": "Compilation Error", "error": compile_error, "results": []}
+            return {"status": "Compilation Error", "error": compile_msg, "results": []}
 
         results = []
         for idx, case in enumerate(payload.cases):
@@ -234,10 +236,11 @@ def run_samples(
                     "run_status": run["status"],          # ok / Runtime Error / Time Limit Exceeded
                     "passed": (actual == expected) if ok else False,
                     "time_ms": run["time_ms"],
+                    "mem_kb": run.get("mem_kb"),
                 }
             )
 
-        return {"status": "ok", "error": "", "results": results}
+        return {"status": "ok", "error": "", "results": results, "warnings": compile_msg}
 
 
 @router.websocket("/run-interactive")
@@ -497,6 +500,48 @@ def get_submission(
         "tab_switches": s.tab_switches,
         "test_cases_passed": s.test_cases_passed,
         "test_cases_total": s.test_cases_total,
+        "feedback": s.feedback,
         "submitted_at": s.submitted_at.isoformat() + ("" if s.submitted_at.tzinfo else "Z"),
         "results": results,
     }
+
+
+class FeedbackRequest(BaseModel):
+    feedback: str = ""
+
+
+@router.post("/{sub_id}/feedback")
+def save_feedback(sub_id: int, payload: FeedbackRequest, db: Session = Depends(get_db), _admin=Depends(get_admin_user)):
+    s = db.query(models.Submission).filter(models.Submission.id == sub_id).first()
+    if not s:
+        raise HTTPException(404, "Submission not found")
+    s.feedback = payload.feedback
+    db.commit()
+    return {"ok": True, "feedback": s.feedback}
+
+
+@router.post("/{sub_id}/feedback/suggest")
+async def suggest_feedback(sub_id: int, db: Session = Depends(get_db), _admin=Depends(get_admin_user)):
+    s = db.query(models.Submission).filter(models.Submission.id == sub_id).first()
+    if not s:
+        raise HTTPException(404, "Submission not found")
+    from ai_service import chat_completion
+    prob = s.problem
+    system = (
+        "You are an experienced, encouraging C programming instructor. Write brief (2–4 sentences) "
+        "constructive feedback on a student's submission: note what they did well and what to improve. "
+        "Be specific but do NOT give the full solution."
+    )
+    user = (
+        f"Problem: {prob.title if prob else ''}\n{(prob.description or '') if prob else ''}\n\n"
+        f"Verdict: {s.status} ({s.test_cases_passed}/{s.test_cases_total} test cases passed, score {s.score}%).\n\n"
+        f"Student's code:\n```c\n{(s.code or '')[:4000]}\n```\n\nWrite short feedback addressed to the student."
+    )
+    try:
+        text = await chat_completion(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            max_tokens=300, temperature=0.5,
+        )
+        return {"suggestion": text.strip()}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"AI suggestion unavailable: {e}")

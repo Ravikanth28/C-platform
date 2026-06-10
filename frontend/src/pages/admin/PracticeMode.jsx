@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Search, Code2, Wand2, Edit, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Trash2, Search, Code2, Wand2, Edit, Copy, Power } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../../api/client'
 import Modal          from '../../components/ui/Modal'
@@ -261,15 +261,28 @@ export default function PracticeMode() {
   const [problems, setProblems] = useState([])
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
+  const [showInactive, setShowInactive] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving]     = useState(false)
   const [editProblem, setEditProblem] = useState(null)
 
   const load = () => {
     setLoading(true)
-    api.get('/problems?mode=practice').then((r) => setProblems(r.data)).finally(() => setLoading(false))
+    api.get('/problems?mode=practice&include_inactive=true').then((r) => setProblems(r.data)).finally(() => setLoading(false))
   }
   useEffect(load, [])
+
+  const handleDuplicate = async (id) => {
+    try { await api.post(`/problems/${id}/duplicate`); toast.success('Problem duplicated'); load() }
+    catch { toast.error('Failed to duplicate') }
+  }
+  const handleToggleActive = async (p) => {
+    try {
+      await api.patch(`/problems/${p.id}/active`, { is_active: !p.is_active })
+      toast.success(p.is_active ? 'Problem deactivated' : 'Problem activated')
+      load()
+    } catch { toast.error('Failed to update status') }
+  }
 
   const handleSave = async (payload) => {
     setSaving(true)
@@ -304,16 +317,10 @@ export default function PracticeMode() {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this problem?')) return
-    await api.delete(`/problems/${id}`)
-    toast.success('Problem deleted')
-    load()
-  }
-
   const filtered = problems.filter((p) =>
-    p.title.toLowerCase().includes(search.toLowerCase())
+    p.title.toLowerCase().includes(search.toLowerCase()) && (showInactive || p.is_active)
   )
+  const inactiveCount = problems.filter((p) => !p.is_active).length
 
   if (loading) return <PageLoader />
 
@@ -329,10 +336,17 @@ export default function PracticeMode() {
         </button>
       </div>
 
-      <div className="relative max-w-xs">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-t4" />
-        <input className="input pl-8" placeholder="Search problems…" value={search}
-          onChange={(e) => setSearch(e.target.value)} />
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative max-w-xs flex-1 min-w-[180px]">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-t4" />
+          <input className="input pl-8" placeholder="Search problems…" value={search}
+            onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        {inactiveCount > 0 && (
+          <button onClick={() => setShowInactive(v => !v)} className={showInactive ? 'tab-active' : 'tab-inactive'}>
+            {showInactive ? 'Hide' : 'Show'} inactive ({inactiveCount})
+          </button>
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -343,7 +357,7 @@ export default function PracticeMode() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((p) => (
-            <ProblemCard key={p.id} problem={p} onEdit={handleEdit} onDelete={handleDelete} />
+            <ProblemCard key={p.id} problem={p} onEdit={handleEdit} onDuplicate={handleDuplicate} onToggle={handleToggleActive} />
           ))}
         </div>
       )}
@@ -361,17 +375,21 @@ export default function PracticeMode() {
   )
 }
 
-function ProblemCard({ problem: p, onEdit, onDelete }) {
+function ProblemCard({ problem: p, onEdit, onDuplicate, onToggle }) {
   return (
-    <div className="card-hover">
+    <div className="card" style={p.is_active ? undefined : { opacity: 0.62 }}>
       <div className="flex items-start justify-between mb-2">
         <h3 className="h3 text-sm leading-snug line-clamp-2 flex-1 pr-2">{p.title}</h3>
-        <div className="flex gap-1 flex-shrink-0">
-          <button onClick={() => onEdit(p.id)} className="btn-ghost p-1" style={{ color: 'var(--t2)' }}>
+        <div className="flex gap-0.5 flex-shrink-0">
+          <button onClick={() => onEdit(p.id)} title="Edit" className="btn-ghost p-1" style={{ color: 'var(--t2)' }}>
             <Edit size={14} />
           </button>
-          <button onClick={() => onDelete(p.id)} className="btn-ghost p-1" style={{ color: 'var(--err)' }}>
-            <Trash2 size={14} />
+          <button onClick={() => onDuplicate(p.id)} title="Duplicate" className="btn-ghost p-1" style={{ color: 'var(--t2)' }}>
+            <Copy size={14} />
+          </button>
+          <button onClick={() => onToggle(p)} title={p.is_active ? 'Deactivate' : 'Activate'} className="btn-ghost p-1"
+            style={{ color: p.is_active ? 'var(--err)' : 'var(--ok)' }}>
+            <Power size={14} />
           </button>
         </div>
       </div>
@@ -380,6 +398,7 @@ function ProblemCard({ problem: p, onEdit, onDelete }) {
         <DifficultyBadge level={p.difficulty} />
         <span className="badge-blue badge tabular">{p.test_cases_count} test cases</span>
         {p.is_for_all ? <span className="badge-green badge">All</span> : <span className="badge-violet badge">Assigned</span>}
+        {!p.is_active && <span className="badge-gray badge">Inactive</span>}
       </div>
       <p className="text-xs text-t4 line-clamp-2">{p.description}</p>
     </div>

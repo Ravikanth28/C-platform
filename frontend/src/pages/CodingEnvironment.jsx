@@ -11,17 +11,37 @@ import {
 import toast from 'react-hot-toast'
 import api from '../api/client'
 import { StatusBadge } from '../components/ui/Badge'
+import Modal from '../components/ui/Modal'
 import LoadingSpinner, { PageLoader } from '../components/ui/LoadingSpinner'
 import { formatDistanceToNow } from 'date-fns'
 import { useTheme } from '../context/ThemeContext'
 import { useAuth } from '../context/AuthContext'
+import { initVimMode } from 'monaco-vim'
 import useInteractiveRun from '../hooks/useInteractiveRun'
 import EditorTour from '../components/ui/EditorTour'
 import Markdown from '../components/ui/Markdown'
 
 const TOUR_KEY = 'cf_editor_tour_v1'
+const PREFS_KEY = 'cf_editor_prefs'
+const DEFAULT_PREFS = { fontSize: 14, tabSize: 4, relativeLines: false, wordWrap: true, vim: false }
+const loadPrefs = () => {
+  try { return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') } } catch { return { ...DEFAULT_PREFS } }
+}
+const fmtMem = (kb) => (kb == null ? '' : kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`)
 
 const DEFAULT_C = `#include <stdio.h>\n\nint main() {\n    // Write your solution here\n    \n    return 0;\n}\n`
+
+// Parse gcc stderr lines like  "…/solution.c:5:9: error: expected ';' …"
+function parseGccErrors(text) {
+  const out = []
+  if (!text) return out
+  const re = /:(\d+):(\d+):\s*(error|warning|note):\s*([^\n]*)/g
+  let m
+  while ((m = re.exec(text)) !== null) {
+    out.push({ line: parseInt(m[1], 10), col: parseInt(m[2], 10), severity: m[3], message: m[4].trim() })
+  }
+  return out
+}
 
 export default function CodingEnvironment() {
   const { problemId } = useParams()
@@ -48,6 +68,11 @@ export default function CodingEnvironment() {
   const [sampleRun, setSampleRun]     = useState(null)
   const runner = useInteractiveRun()
   const [tourOpen, setTourOpen]       = useState(false)
+  const [prefs, setPrefs]             = useState(loadPrefs)
+  const [showSettings, setShowSettings] = useState(false)
+  const [editorReady, setEditorReady] = useState(false)
+  const vimRef       = useRef(null)
+  const vimStatusRef = useRef(null)
 
   const closeTour = () => {
     setTourOpen(false)
@@ -147,6 +172,62 @@ export default function CodingEnvironment() {
   const autoSubmittedRef = useRef(false)
   const containerRef = useRef(null)
   const stateRef     = useRef({}) // latest values for global shortcuts
+  const editorRef    = useRef(null)
+  const monacoRef    = useRef(null)
+
+  const clearMarkers = () => {
+    try { monacoRef.current?.editor.setModelMarkers(editorRef.current.getModel(), 'gcc', []) } catch { /* ignore */ }
+  }
+  const showCompileErrors = (text) => {
+    const m = monacoRef.current, ed = editorRef.current
+    if (!m || !ed) return
+    const model = ed.getModel()
+    if (!model) return
+    const sev = (s) => s === 'error' ? m.MarkerSeverity.Error : s === 'warning' ? m.MarkerSeverity.Warning : m.MarkerSeverity.Info
+    const markers = parseGccErrors(text)
+      .filter(e => e.line >= 1 && e.line <= model.getLineCount())
+      .map(e => ({
+        startLineNumber: e.line, startColumn: Math.max(1, e.col),
+        endLineNumber: e.line, endColumn: model.getLineMaxColumn(e.line),
+        message: e.message, severity: sev(e.severity), source: 'gcc',
+      }))
+    m.editor.setModelMarkers(model, 'gcc', markers)
+    if (markers.length) ed.revealLineInCenter(markers[0].startLineNumber)
+  }
+
+  // Console (WebSocket) compilation errors → editor squiggles too
+  useEffect(() => {
+    if (runner.compileError) showCompileErrors(runner.compileError)
+  }, [runner.compileError]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist + apply editor preferences live
+  useEffect(() => {
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)) } catch { /* ignore */ }
+    const ed = editorRef.current
+    if (ed) {
+      ed.updateOptions({
+        fontSize: prefs.fontSize,
+        wordWrap: prefs.wordWrap ? 'on' : 'off',
+        lineNumbers: prefs.relativeLines ? 'relative' : 'on',
+        tabSize: prefs.tabSize,
+      })
+      ed.getModel()?.updateOptions({ tabSize: prefs.tabSize, insertSpaces: true })
+    }
+  }, [prefs, editorReady])
+
+  // Vim mode on/off
+  useEffect(() => {
+    const ed = editorRef.current
+    if (!ed) return
+    if (prefs.vim && !vimRef.current) {
+      try { vimRef.current = initVimMode(ed, vimStatusRef.current) } catch { /* ignore */ }
+    } else if (!prefs.vim && vimRef.current) {
+      try { vimRef.current.dispose() } catch { /* ignore */ }
+      vimRef.current = null
+    }
+  }, [prefs.vim, editorReady])
+
+  useEffect(() => () => { try { vimRef.current?.dispose() } catch { /* ignore */ } }, [])
 
   useEffect(() => {
     const mode = isTestMode ? 'test' : 'practice'
@@ -401,8 +482,11 @@ export default function CodingEnvironment() {
       const { data } = await api.post('/submissions/run-samples', { code, cases })
       setSampleRun(data)
       if (data.status === 'Compilation Error') {
-        toast.error('Compilation failed — check the output')
+        showCompileErrors(data.error)
+        toast.error('Compilation failed — see the underlined lines')
       } else {
+        if (data.warnings && data.warnings.trim()) showCompileErrors(data.warnings)
+        else clearMarkers()
         const passed = data.results.filter(r => r.passed).length
         if (passed === data.results.length) toast.success(`All ${passed} sample${passed === 1 ? '' : 's'} passed`)
         else toast.error(`${passed}/${data.results.length} samples passed`)
@@ -490,6 +574,7 @@ export default function CodingEnvironment() {
   return (
     <>
     <EditorTour open={tourOpen} steps={tourSteps} onClose={closeTour} />
+    <EditorSettingsModal open={showSettings} prefs={prefs} setPrefs={setPrefs} onClose={() => setShowSettings(false)} />
     {showVisualize && (
       <VisualizeModal code={code} defaultInput={visibleSamples[0]?.input_data || ''} onClose={() => setShowVisualize(false)} />
     )}
@@ -618,6 +703,7 @@ export default function CodingEnvironment() {
               >
                 <HelpCircle size={13} /> Guide
               </button>
+              <IconBtn icon={<Settings size={14} />} tooltip="Editor settings" onClick={() => setShowSettings(true)} />
               <IconBtn
                 icon={isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                 tooltip={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
@@ -643,9 +729,12 @@ export default function CodingEnvironment() {
               height="100%"
               language="c"
               value={code}
-              onChange={(v) => setCode(v || '')}
+              onChange={(v) => { setCode(v || ''); clearMarkers() }}
               theme={isDark ? 'vs-dark' : 'light'}
               onMount={(editor, monaco) => {
+                editorRef.current = editor
+                monacoRef.current = monaco
+                setEditorReady(true)
                 editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => stateRef.current.handleRun?.())
                 editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter, () => stateRef.current.handleSubmit?.(true))
                 editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
@@ -654,12 +743,13 @@ export default function CodingEnvironment() {
                 })
               }}
               options={{
-                fontSize: 14,
+                fontSize: prefs.fontSize,
+                tabSize: prefs.tabSize,
                 fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
                 minimap: { enabled: false },
                 scrollBeyondLastLine: false,
-                wordWrap: 'on',
-                lineNumbers: 'on',
+                wordWrap: prefs.wordWrap ? 'on' : 'off',
+                lineNumbers: prefs.relativeLines ? 'relative' : 'on',
                 renderLineHighlight: 'line',
                 suggestOnTriggerCharacters: true,
                 padding: { top: 10, bottom: 10 },
@@ -667,6 +757,7 @@ export default function CodingEnvironment() {
               }}
             />
           </div>
+          {prefs.vim && <div ref={vimStatusRef} className="px-3 py-0.5 text-[11px] font-mono text-t4 bg-surface-h border-t border-line flex-shrink-0" />}
 
           {/* Run / self-check panel — never grades */}
           <div className="border-t border-line bg-surface-h flex-shrink-0">
@@ -764,6 +855,42 @@ function IconBtn({ icon, tooltip, onClick }) {
     >
       {icon}
     </button>
+  )
+}
+
+function EditorSettingsModal({ open, prefs, setPrefs, onClose }) {
+  if (!open) return null
+  const upd = (k, v) => setPrefs(p => ({ ...p, [k]: v }))
+  const Toggle = ({ k, label, desc }) => (
+    <label className="flex items-center justify-between gap-3 rounded-lg border border-line surface-inset px-3 py-2.5 cursor-pointer">
+      <span><span className="text-[13px] text-t font-medium">{label}</span>{desc && <span className="block text-[11px] text-t4">{desc}</span>}</span>
+      <input type="checkbox" checked={prefs[k]} onChange={e => upd(k, e.target.checked)} className="accent-[color:var(--brand)] w-4 h-4" />
+    </label>
+  )
+  return (
+    <Modal open onClose={onClose} title="Editor settings" size="sm">
+      <div className="space-y-4">
+        <div>
+          <label className="label">Font size · {prefs.fontSize}px</label>
+          <input type="range" min={11} max={22} value={prefs.fontSize} onChange={e => upd('fontSize', Number(e.target.value))} className="w-full accent-[color:var(--brand)]" />
+        </div>
+        <div>
+          <label className="label">Tab width</label>
+          <div className="flex gap-2">
+            {[2, 4, 8].map(n => (
+              <button key={n} onClick={() => upd('tabSize', n)} className={prefs.tabSize === n ? 'tab-active' : 'tab-inactive'}>{n} spaces</button>
+            ))}
+          </div>
+        </div>
+        <Toggle k="relativeLines" label="Relative line numbers" desc="Show line distances from the cursor" />
+        <Toggle k="wordWrap" label="Word wrap" />
+        <Toggle k="vim" label="Vim mode" desc="Modal editing with a status bar" />
+        <div className="flex justify-between pt-1">
+          <button className="btn-ghost btn-sm" onClick={() => setPrefs({ ...DEFAULT_PREFS })}>Reset to defaults</button>
+          <button className="btn-primary btn-sm" onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -1062,7 +1189,9 @@ function SampleCaseRow({ r, index }) {
         <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: accent }}>
           {runFailed ? r.run_status : (ok ? 'Passed' : 'Failed')}
         </span>
-        {r.time_ms != null && <span className="ml-auto text-[10px] text-t4 tabular">{r.time_ms.toFixed(1)}ms</span>}
+        <span className="ml-auto text-[10px] text-t4 tabular">
+          {r.time_ms != null && `${r.time_ms.toFixed(1)} ms`}{r.mem_kb != null && ` · ${fmtMem(r.mem_kb)}`}
+        </span>
       </div>
 
       <div className="px-3 pt-2">

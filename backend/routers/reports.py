@@ -163,5 +163,6 @@ def get_report_detail(
     return {
         **_row(s),
         "code": s.code,
+        "feedback": s.feedback,
         "results": results,
     }

@@ -186,6 +186,7 @@ class Submission(Base):
     tab_switches = Column(Integer, default=0)
     test_cases_passed = Column(Integer, default=0)
     test_cases_total = Column(Integer, default=0)
+    feedback = Column(Text)  # teacher feedback (manual or AI-suggested)
 
     problem = relationship("Problem", back_populates="submissions")
     user = relationship("User", back_populates="submissions")
@@ -215,6 +216,7 @@ class Class(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(120), nullable=False)
     description = Column(Text)
+    invite_code = Column(String(12), unique=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   Plus, Trash2, Users, GraduationCap, ClipboardList, BarChart3,
   CalendarClock, CheckCircle2, Circle, ArrowRight, BookOpen, ChevronDown, Search,
+  Copy, RefreshCw, KeyRound,
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -99,6 +100,11 @@ function AdminAssignments() {
       load()
     } catch { toast.error('Failed to create sample data') }
   }
+  const regenCode = async (id) => {
+    try { await api.post(`/classroom/classes/${id}/regenerate-code`); toast.success('New invite code generated'); load() }
+    catch { toast.error('Failed to regenerate code') }
+  }
+  const copyText = (t) => { navigator.clipboard.writeText(t || ''); toast.success('Copied') }
 
   if (classes === null || assignments === null) return <PageLoader />
 
@@ -159,7 +165,15 @@ function AdminAssignments() {
           <div className="min-w-0">
             <h3 className="h3 truncate">{selectedClass ? selectedClass.name : 'Assignments'}</h3>
             {selectedClass && (
-              <p className="text-[12px] text-t4 tabular">{classAssignments.length} assignment{classAssignments.length === 1 ? '' : 's'} · {selectedClass.member_count} students</p>
+              <>
+                <p className="text-[12px] text-t4 tabular">{classAssignments.length} assignment{classAssignments.length === 1 ? '' : 's'} · {selectedClass.member_count} students</p>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="text-[11px] text-t4 inline-flex items-center gap-1"><KeyRound size={11} /> Invite code:</span>
+                  <code className="text-[12px] font-mono font-semibold px-1.5 py-0.5 rounded" style={{ background: 'var(--brandL)', color: 'var(--brand)' }}>{selectedClass.invite_code || '—'}</code>
+                  <button onClick={() => copyText(selectedClass.invite_code)} title="Copy code" className="text-t4 hover:text-t transition-colors"><Copy size={12} /></button>
+                  <button onClick={() => regenCode(selectedClass.id)} title="Regenerate code" className="text-t4 hover:text-t transition-colors"><RefreshCw size={12} /></button>
+                </div>
+              </>
             )}
           </div>
           <button className="btn-primary btn-sm disabled:opacity-50 flex-shrink-0" disabled={!selectedClass} onClick={() => setShowAssign(true)}>
@@ -465,26 +479,54 @@ function AdminAnalytics() {
 
 // ─────────────────────────── Student · Assignments ─────────────────────────
 
+function JoinClassCard({ onJoined }) {
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const join = async () => {
+    if (!code.trim()) { toast.error('Enter an invite code'); return }
+    setBusy(true)
+    try {
+      const { data } = await api.post('/classroom/join', { code })
+      toast.success(data.joined ? `Joined ${data.class_name}` : (data.message || 'Already enrolled'))
+      setCode(''); onJoined()
+    } catch (e) { toast.error(e.response?.data?.detail || 'Could not join') }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="card flex items-center gap-2 flex-wrap">
+      <span className="text-[13px] text-t2 font-medium inline-flex items-center gap-1.5"><KeyRound size={14} className="text-brand" /> Have a class invite code?</span>
+      <input className="input max-w-[160px] font-mono uppercase tracking-wide" placeholder="A1B2C3" value={code}
+        onChange={e => setCode(e.target.value.toUpperCase())} onKeyDown={e => { if (e.key === 'Enter') join() }} />
+      <button className="btn-primary btn-sm" onClick={join} disabled={busy}>{busy ? 'Joining…' : 'Join class'}</button>
+    </div>
+  )
+}
+
 function StudentAssignments() {
   const [list, setList] = useState(null)
   const [openId, setOpenId] = useState(null)
-  useEffect(() => {
-    api.get('/classroom/my-assignments').then(r => { setList(r.data); setOpenId(r.data[0]?.id ?? null) }).catch(() => setList([]))
-  }, [])
+  const load = () => api.get('/classroom/my-assignments')
+    .then(r => { setList(r.data); setOpenId(o => o ?? (r.data[0]?.id ?? null)) })
+    .catch(() => setList([]))
+  useEffect(() => { load() }, [])
   if (list === null) return <PageLoader />
 
   if (list.length === 0) {
     return (
-      <div className="card text-center py-12">
-        <BookOpen size={32} className="mx-auto mb-3" style={{ color: 'var(--t4)' }} />
-        <p className="h3 mb-1">No assignments yet</p>
-        <p className="section-sub">When your teacher assigns work to your class, it'll appear here with due dates and progress.</p>
+      <div className="space-y-3">
+        <JoinClassCard onJoined={load} />
+        <div className="card text-center py-12">
+          <BookOpen size={32} className="mx-auto mb-3" style={{ color: 'var(--t4)' }} />
+          <p className="h3 mb-1">No assignments yet</p>
+          <p className="section-sub">Join a class with an invite code above, or wait for your teacher to assign work.</p>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="space-y-3">
+      <JoinClassCard onJoined={load} />
       {list.map(a => {
         const pct = a.total ? Math.round(a.solved / a.total * 100) : 0
         const overdue = a.due_date && new Date(a.due_date) < new Date() && pct < 100
