@@ -5,7 +5,7 @@ import {
   FileText, Link2, CheckSquare, Square, Upload, X,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import api from '../../api/client'
+import api, { getFileUrl } from '../../api/client'
 import Modal           from '../../components/ui/Modal'
 import { PageLoader }  from '../../components/ui/LoadingSpinner'
 
@@ -316,7 +316,7 @@ function NoteCard({ note, selected, onToggle, onDelete }) {
 
       <div className="flex gap-2">
         {note.file_url && (
-          <a href={note.file_url} target="_blank" rel="noreferrer"
+          <a href={getFileUrl(note.file_url)} target="_blank" rel="noreferrer"
             className="btn-secondary btn-sm flex-1 justify-center">
             <Eye size={12} /> View
           </a>

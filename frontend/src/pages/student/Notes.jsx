@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Eye, Download, Youtube, FileText, Link2, Search, BookOpen } from 'lucide-react'
-import api from '../../api/client'
+import api, { getFileUrl } from '../../api/client'
 import { PageLoader } from '../../components/ui/LoadingSpinner'
 
 const TYPE_ICONS = {
@@ -26,7 +26,7 @@ export default function StudentNotes() {
 
   const handleView = async (note) => {
     await api.post(`/notes/${note.id}/view`).catch(() => {})
-    if (note.file_url)      window.open(note.file_url, '_blank')
+    if (note.file_url)      window.open(getFileUrl(note.file_url), '_blank')
     else if (note.yt_link)  window.open(note.yt_link, '_blank')
     else if (note.external_link) window.open(note.external_link, '_blank')
   }
@@ -35,7 +35,7 @@ export default function StudentNotes() {
     await api.post(`/notes/${note.id}/download`).catch(() => {})
     if (note.file_url) {
       const a = document.createElement('a')
-      a.href = note.file_url; a.download = note.title
+      a.href = getFileUrl(note.file_url); a.download = note.title
       a.click()
     }
   }

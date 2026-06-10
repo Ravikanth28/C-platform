@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -24,5 +24,15 @@ api.interceptors.response.use(
     return Promise.reject(err)
   }
 )
+
+export const getFileUrl = (url) => {
+  if (!url) return url
+  if (url.startsWith('/uploads')) {
+    const apiBase = import.meta.env.VITE_API_URL || '/api'
+    const base = apiBase.replace(/\/api\/?$/, '')
+    return `${base}${url}`
+  }
+  return url
+}
 
 export default api
