@@ -502,33 +502,10 @@ export default function CodingEnvironment() {
           )}
         </div>
 
-        <div className="flex items-center gap-3 flex-1 max-w-md mx-6">
-          <button
-            onClick={goPrev}
-            disabled={!prevProblem}
-            className="flex items-center gap-1 text-xs text-t3 hover:text-t disabled:opacity-30 disabled:cursor-not-allowed transition-colors font-medium whitespace-nowrap"
-          >
-            <ChevronLeft size={14} /> Prev
-          </button>
-          <div className="flex-1 h-1.5 surface-inset rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${progressPct}%`, background: 'var(--brand)' }}
-            />
-          </div>
-          <button
-            onClick={goNext}
-            disabled={!nextProblem}
-            className="flex items-center gap-1 text-xs text-t3 hover:text-t disabled:opacity-30 disabled:cursor-not-allowed transition-colors font-medium whitespace-nowrap"
-          >
-            Next <ChevronRight size={14} />
-          </button>
+        <div className="flex items-center gap-3 flex-1 mx-6">
         </div>
 
         <div className="flex items-center gap-2">
-          {allProblems.length > 0 && (
-            <span className="text-xs text-t4 tabular">{currentIndex + 1} / {allProblems.length}</span>
-          )}
           {isTestMode && (
             <button onClick={isFullscreen ? exitFullscreen : requestFullscreen} className="text-t3 hover:text-t transition-colors">
               {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
@@ -598,10 +575,9 @@ export default function CodingEnvironment() {
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           <div className="flex items-center justify-between px-3 h-10 border-b border-line bg-surface-h flex-shrink-0">
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 surface-inset border border-line rounded px-2.5 py-1 text-xs text-t2 cursor-default select-none">
+              <div className="flex items-center gap-1.5 text-xs text-t2 cursor-default select-none font-medium">
                 <span className="w-2 h-2 rounded-full inline-block" style={{ background: 'var(--info)' }} />
                 C Language
-                <ChevronDown size={11} className="text-t4" />
               </div>
               <span className="text-[11px] text-t4 hidden sm:inline tabular">
                 {saveState === 'saving' ? 'Saving…' : '✓ Saved'}
@@ -622,6 +598,18 @@ export default function CodingEnvironment() {
                 tooltip={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
                 onClick={isFullscreen ? exitFullscreen : requestFullscreen}
               />
+              <div className="w-px h-4 bg-line mx-1" />
+              <button
+                data-tour="submit"
+                onClick={() => handleSubmit(true)}
+                disabled={submitting}
+                className="btn-primary btn-sm ml-1"
+              >
+                {submitting
+                  ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  : <Send size={12} />}
+                {submitting ? 'Submitting…' : 'Submit'}
+              </button>
             </div>
           </div>
 
@@ -713,32 +701,14 @@ export default function CodingEnvironment() {
                   ? (busy ? 'Compiling…' : (runner.status === 'running' ? 'Restart' : 'Run'))
                   : (busy ? 'Running…' : 'Run')
                 return (
-                  <button data-tour="run" onClick={handleRun} disabled={busy} className="btn-secondary btn-sm">
+                  <button data-tour="run" onClick={handleRun} disabled={busy} className="btn-primary btn-sm">
                     {busy
-                      ? <span className="w-3 h-3 border-2 border-line border-t-t rounded-full animate-spin" />
+                      ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                       : <Play size={12} fill="currentColor" />}
                     {label}
                   </button>
                 )
               })()}
-              <button
-                data-tour="submit"
-                onClick={() => handleSubmit(true)}
-                disabled={submitting}
-                className="btn-primary btn-sm"
-              >
-                {submitting
-                  ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  : <Send size={12} />}
-                {submitting ? 'Submitting…' : 'Submit'}
-              </button>
-              <button
-                onClick={goNext}
-                disabled={!nextProblem}
-                className="btn-secondary btn-sm disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                Next <ChevronRight size={12} />
-              </button>
             </div>
           </div>
         </div>
