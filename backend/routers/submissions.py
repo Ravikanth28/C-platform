@@ -1,15 +1,21 @@
 """Code submission + judging."""
+import asyncio
+import shutil
 import tempfile
+import threading
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import models
 import schemas
-from auth import get_current_user
-from code_runner import compile_code, judge_submission, run_once
+from auth import ALGORITHM, SECRET_KEY, get_current_user
+from code_runner import _normalize, compile_code, judge_submission, run_once
 from database import get_db
+from interactive_runner import make_session
 
 router = APIRouter()
 
@@ -19,12 +25,23 @@ class RunRequest(BaseModel):
     custom_input: str = ""
 
 
+class SampleCase(BaseModel):
+    id: Optional[int] = None
+    input_data: str = ""
+    expected_output: str = ""
+
+
+class RunSamplesRequest(BaseModel):
+    code: str
+    cases: List[SampleCase] = []
+
+
 @router.post("/run")
 def run_code(
     payload: RunRequest,
     _user: models.User = Depends(get_current_user),
 ):
-    """Compile and run code against custom input (no submission stored)."""
+    """Compile and run code against custom input (no submission stored, no grading)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         exe, compile_error = compile_code(payload.code, tmpdir)
         if not exe:
@@ -35,6 +52,153 @@ def run_code(
             "output": result["output"],
             "time_ms": result["time_ms"],
         }
+
+
+@router.post("/run-samples")
+def run_samples(
+    payload: RunSamplesRequest,
+    _user: models.User = Depends(get_current_user),
+):
+    """
+    Compile once and run the code against the visible sample cases.
+    Returns per-case actual output + pass/fail for an Expected-vs-Yours
+    comparison. NOTHING is stored and NO score is recorded — this is a
+    student self-check tool, not a submission.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        exe, compile_error = compile_code(payload.code, tmpdir)
+        if not exe:
+            return {"status": "Compilation Error", "error": compile_error, "results": []}
+
+        results = []
+        for idx, case in enumerate(payload.cases):
+            run = run_once(exe, case.input_data)
+            expected = _normalize(case.expected_output)
+            actual = run["output"]
+            ok = run["status"] == "ok"
+            results.append(
+                {
+                    "id": case.id,
+                    "index": idx,
+                    "input": case.input_data,
+                    "expected": expected,
+                    "actual": actual,
+                    "run_status": run["status"],          # ok / Runtime Error / Time Limit Exceeded
+                    "passed": (actual == expected) if ok else False,
+                    "time_ms": run["time_ms"],
+                }
+            )
+
+        return {"status": "ok", "error": "", "results": results}
+
+
+@router.websocket("/run-interactive")
+async def run_interactive(ws: WebSocket):
+    """
+    Live, CodeBlocks-style interactive run over a pseudo-terminal.
+
+    Protocol (JSON messages):
+      client -> {"type":"start","code":"..."}   begin compile + run
+      client -> {"type":"stdin","data":"5\\n"}   feed a line to the program
+      client -> {"type":"stop"}                  kill the program
+      server -> {"type":"started"}               compiled, process spawned
+      server -> {"type":"stdout","data":"..."}   streamed program output
+      server -> {"type":"compile_error","data"}  gcc failed
+      server -> {"type":"exit","code":0}          process finished
+      server -> {"type":"error","data":"..."}     runner failure
+
+    Auth: pass a valid JWT as the ?token= query parameter (a WebSocket
+    cannot send the Authorization header the axios client uses).
+    """
+    token = ws.query_params.get("token", "")
+    try:
+        jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        await ws.close(code=4401)
+        return
+
+    await ws.accept()
+    loop = asyncio.get_running_loop()
+    tmpdir = tempfile.mkdtemp(prefix="cf_run_")
+    session = None
+    queue: asyncio.Queue = asyncio.Queue()
+    stop_flag = threading.Event()
+
+    try:
+        init = await ws.receive_json()
+        if init.get("type") != "start":
+            await ws.send_json({"type": "error", "data": "expected a start message"})
+            return
+
+        code = init.get("code", "")
+        exe, compile_error = compile_code(code, tmpdir, force_unbuffered=True)
+        if not exe:
+            await ws.send_json({"type": "compile_error", "data": compile_error})
+            await ws.send_json({"type": "exit", "code": None})
+            return
+
+        try:
+            session, mode, note = make_session(exe)
+        except Exception as e:  # noqa: BLE001
+            await ws.send_json({"type": "error", "data": f"Could not start program: {e}"})
+            return
+
+        await ws.send_json({"type": "started", "mode": mode})
+        if note:
+            await ws.send_json({"type": "info", "data": note})
+
+        def reader():
+            while not stop_flag.is_set():
+                chunk = session.read()
+                if chunk == "":
+                    break
+                loop.call_soon_threadsafe(queue.put_nowait, ("out", chunk))
+            rc = session.wait_returncode()
+            loop.call_soon_threadsafe(queue.put_nowait, ("exit", rc))
+
+        threading.Thread(target=reader, daemon=True).start()
+
+        async def pump_out():
+            while True:
+                kind, data = await queue.get()
+                if kind == "out":
+                    await ws.send_json({"type": "stdout", "data": data})
+                else:
+                    await ws.send_json({"type": "exit", "code": data})
+                    return
+
+        async def pump_in():
+            while True:
+                msg = await ws.receive_json()
+                kind = msg.get("type")
+                if kind == "stdin":
+                    session.write(msg.get("data", ""))
+                elif kind == "stop":
+                    session.close()
+                    return
+
+        out_task = asyncio.create_task(pump_out())
+        in_task = asyncio.create_task(pump_in())
+        _, pending = await asyncio.wait({out_task, in_task}, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:  # noqa: BLE001
+        try:
+            await ws.send_json({"type": "error", "data": str(e)})
+        except Exception:
+            pass
+    finally:
+        stop_flag.set()
+        if session:
+            session.close()
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        try:
+            await ws.close()
+        except Exception:
+            pass
 
 
 @router.post("", status_code=201)

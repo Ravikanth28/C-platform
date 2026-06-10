@@ -5,7 +5,7 @@ import {
   Play, Send, ChevronLeft, ChevronRight, Clock, AlertTriangle,
   CheckCircle, XCircle, Terminal, Maximize2, Minimize2, ShieldCheck,
   Copy, Settings, Bookmark, BookmarkCheck, ThumbsUp, ThumbsDown,
-  MessageSquare, Sparkles, ChevronDown, ChevronUp, X, Eye,
+  MessageSquare, Sparkles, ChevronDown, ChevronUp, X, Eye, HelpCircle,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../api/client'
@@ -13,6 +13,10 @@ import { StatusBadge } from '../components/ui/Badge'
 import { PageLoader } from '../components/ui/LoadingSpinner'
 import { useTheme } from '../context/ThemeContext'
 import { useAuth } from '../context/AuthContext'
+import useInteractiveRun from '../hooks/useInteractiveRun'
+import EditorTour from '../components/ui/EditorTour'
+
+const TOUR_KEY = 'cf_editor_tour_v1'
 
 const DEFAULT_C = `#include <stdio.h>\n\nint main() {\n    // Write your solution here\n    \n    return 0;\n}\n`
 
@@ -31,13 +35,88 @@ export default function CodingEnvironment() {
   const [submitting, setSubmitting]   = useState(false)
   const [running, setRunning]         = useState(false)
   const [result, setResult]           = useState(null)
-  const [runOutput, setRunOutput]     = useState(null)
   const [activeTab, setActiveTab]     = useState('statement')
   const [timer, setTimer]             = useState(0)
   const [tabSwitches, setTabSwitches] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [customInputOpen, setCustomInputOpen] = useState(true)
-  const [customInput, setCustomInput] = useState('')
+  const [runMode, setRunMode]         = useState('samples') // 'samples' | 'console'
+  const [sampleRun, setSampleRun]     = useState(null)
+  const runner = useInteractiveRun()
+  const [tourOpen, setTourOpen]       = useState(false)
+
+  const closeTour = () => {
+    setTourOpen(false)
+    try { localStorage.setItem(TOUR_KEY, '1') } catch { /* ignore */ }
+  }
+
+  const tourSteps = [
+    {
+      title: 'Welcome to the workspace',
+      body: 'A quick 60-second tour of how to read a problem, test your code, and submit. You can replay it anytime from the ? button in the editor toolbar.',
+    },
+    {
+      selector: '[data-tour="statement"]',
+      placement: 'right',
+      title: 'Problem & samples',
+      body: 'Read the task here. Each sample shows an Input and the Expected Output — use the copy icons to grab them. Scroll down for constraints and the time limit.',
+      onEnter: () => { setActiveTab('statement'); setShowResult(false) },
+    },
+    {
+      selector: '[data-tour="ai-tutor"]',
+      placement: 'bottom',
+      title: 'Stuck? Ask the AI Tutor',
+      body: 'Switch to AI Tutor mode for hints and step-by-step guidance about the approach — without giving away the full answer.',
+    },
+    {
+      selector: '[data-tour="editor"]',
+      placement: 'left',
+      title: 'Write your C code here',
+      body: 'A full code editor with syntax highlighting, auto-indent and autocomplete. Your starter `main()` is ready — write your solution using printf / scanf.',
+    },
+    {
+      selector: '[data-tour="editor-tools"]',
+      placement: 'bottom',
+      title: 'Editor tools',
+      body: 'Copy your code, open editor settings, or go fullscreen for a distraction-free view.',
+    },
+    {
+      selector: '[data-tour="sample-tests"]',
+      placement: 'top',
+      title: 'Sample Tests — check yourself',
+      body: 'Press Run on this tab to test your code against the visible samples. You get a side-by-side Expected vs Your Output with ✓/✗ per case. This NEVER affects your score.',
+      onEnter: () => { setRunMode('samples'); setCustomInputOpen(true) },
+    },
+    {
+      selector: '[data-tour="console"]',
+      placement: 'top',
+      title: 'Console — run interactively',
+      body: 'Run your program live, like a real terminal. When your code hits a scanf it pauses and waits — type the value, press Enter, and it continues. Input is asked line-by-line, just like CodeBlocks.',
+      onEnter: () => { setRunMode('console'); setCustomInputOpen(true) },
+    },
+    {
+      selector: '[data-tour="run"]',
+      placement: 'top',
+      title: 'Run',
+      body: 'Runs the active tab — Sample Tests or Console. It is only a self-check: nothing is graded or saved.',
+    },
+    {
+      selector: '[data-tour="submit"]',
+      placement: 'top',
+      title: 'Submit — graded',
+      body: 'This grades your code against ALL test cases (including hidden ones), records your score, and finishes the problem. Use it once you are confident.',
+    },
+    {
+      selector: '[data-tour="timer"]',
+      placement: 'bottom',
+      title: 'Timer & navigation',
+      body: 'Your elapsed time shows here (and the limit, if any). Use Prev / Next at the top to move between problems in this set.',
+    },
+    {
+      title: "You're all set",
+      body: 'Read → write → Run to self-check → Submit to score. Tip: press the ? in the editor toolbar to see this tour again whenever you need it. Happy coding!',
+    },
+  ]
   const [aiQuestion, setAiQuestion]   = useState('')
   const [aiLoading, setAiLoading]     = useState(false)
   const [showFullscreenOverlay, setShowFullscreenOverlay] = useState(false)
@@ -73,6 +152,16 @@ export default function CodingEnvironment() {
     }, 1000)
     return () => clearInterval(timerRef.current)
   }, [problem])
+
+  // First-time guided tour (practice mode only — don't distract during a timed test)
+  useEffect(() => {
+    if (!problem || isTestMode) return
+    let seen = false
+    try { seen = !!localStorage.getItem(TOUR_KEY) } catch { /* ignore */ }
+    if (seen) return
+    const t = setTimeout(() => setTourOpen(true), 600)
+    return () => clearTimeout(t)
+  }, [problem, isTestMode])
 
   useEffect(() => {
     if (!isTestMode || !problem) return
@@ -208,26 +297,44 @@ export default function CodingEnvironment() {
     }
   }
 
+  const visibleSamples = problem?.test_cases?.filter(tc => !tc.is_hidden) || []
+
+  // Run = student self-check. NEVER grades or stores a submission.
   const handleRun = async () => {
     if (!code.trim()) { toast.error('Write some code first!'); return }
-    
-    if (!customInput.trim()) {
-      return handleSubmit(false)
+    setCustomInputOpen(true)
+
+    if (runMode === 'console') {
+      runner.start(code)   // live interactive console over WebSocket
+      return
     }
 
     setRunning(true)
-    setRunOutput(null)
-    setCustomInputOpen(true)
     try {
-      const { data } = await api.post('/submissions/run', { code, custom_input: customInput })
-      setRunOutput(data)
-      if (data.status !== 'ok') {
-        toast.error(data.status === 'Compilation Error' ? 'Compilation failed — check the output' : data.status)
+      setSampleRun(null)
+      if (visibleSamples.length === 0) {
+        toast('No sample cases — switch to the Console tab to test your own input.')
+        setRunning(false)
+        return
+      }
+      const cases = visibleSamples.map(tc => ({
+        id: tc.id,
+        input_data: tc.input_data || '',
+        expected_output: tc.expected_output || '',
+      }))
+      const { data } = await api.post('/submissions/run-samples', { code, cases })
+      setSampleRun(data)
+      if (data.status === 'Compilation Error') {
+        toast.error('Compilation failed — check the output')
+      } else {
+        const passed = data.results.filter(r => r.passed).length
+        if (passed === data.results.length) toast.success(`All ${passed} sample${passed === 1 ? '' : 's'} passed`)
+        else toast.error(`${passed}/${data.results.length} samples passed`)
       }
     } catch (err) {
       const msg = err.response?.data?.detail || err.message || 'Run failed'
       toast.error(msg)
-      setRunOutput({ status: 'Error', output: msg, time_ms: 0 })
+      setSampleRun({ status: 'Error', error: msg, results: [] })
     } finally {
       setRunning(false)
     }
@@ -300,6 +407,7 @@ export default function CodingEnvironment() {
 
   return (
     <>
+    <EditorTour open={tourOpen} steps={tourSteps} onClose={closeTour} />
     {showVisualize && (
       <VisualizeModal code={code} onClose={() => setShowVisualize(false)} />
     )}
@@ -319,6 +427,7 @@ export default function CodingEnvironment() {
             {bookmarked ? <BookmarkCheck size={17} /> : <Bookmark size={17} />}
           </button>
           <div
+            data-tour="timer"
             className="flex items-center gap-1.5 font-mono text-sm px-2 py-0.5 rounded border border-line surface-inset tabular"
             style={problem.duration && timer > problem.duration * 60 * 0.85 ? { color: 'var(--err)' } : { color: 'var(--t2)' }}
           >
@@ -377,7 +486,7 @@ export default function CodingEnvironment() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* LEFT PANEL */}
-        <div className="w-[44%] min-w-[300px] max-w-[560px] flex flex-col border-r border-line overflow-hidden">
+        <div data-tour="statement" className="w-[44%] min-w-[300px] max-w-[560px] flex flex-col border-r border-line overflow-hidden">
           <div className="flex border-b border-line bg-surface-h flex-shrink-0">
             <TabBtn label="Statement" active={activeTab === 'statement' && !showResult} onClick={() => { setActiveTab('statement'); setShowResult(false) }} />
             <TabBtn label="AI Help"   active={activeTab === 'aihelp'   && !showResult} onClick={() => { setActiveTab('aihelp');   setShowResult(false) }} />
@@ -389,6 +498,7 @@ export default function CodingEnvironment() {
               <div className="flex flex-col">
                 <div className="px-4 pt-3 pb-2 border-b border-line">
                   <button
+                    data-tour="ai-tutor"
                     onClick={() => setActiveTab('aihelp')}
                     className="flex items-center gap-2 text-sm text-brand hover:opacity-80 transition-colors group"
                   >
@@ -427,7 +537,8 @@ export default function CodingEnvironment() {
                 <ChevronDown size={11} className="text-t4" />
               </div>
             </div>
-            <div className="flex items-center gap-1">
+            <div data-tour="editor-tools" className="flex items-center gap-1">
+              <IconBtn icon={<HelpCircle size={14} />} tooltip="Show editor tour" onClick={() => setTourOpen(true)} />
               <IconBtn icon={<Copy size={14} />}     tooltip="Copy code"       onClick={handleCopyCode} />
               <IconBtn icon={<Settings size={14} />} tooltip="Editor settings" onClick={() => toast('Editor settings coming soon')} />
               <IconBtn
@@ -438,7 +549,7 @@ export default function CodingEnvironment() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-hidden">
+          <div data-tour="editor" className="flex-1 overflow-hidden">
             <Editor
               height="100%"
               language="c"
@@ -460,73 +571,43 @@ export default function CodingEnvironment() {
             />
           </div>
 
-          {/* Custom Input */}
+          {/* Run / self-check panel — never grades */}
           <div className="border-t border-line bg-surface-h flex-shrink-0">
-            <button
-              onClick={() => setCustomInputOpen(o => !o)}
-              className="w-full flex items-center justify-between px-4 py-2 text-xs text-t3 hover:text-t hover:bg-surface-h transition-colors"
-            >
+            <div className="flex items-center justify-between pl-2 pr-3 h-9 border-b border-line">
+              <div className="flex items-center gap-1">
+                <RunSubTab dataTour="sample-tests" label="Sample Tests" active={runMode === 'samples'} onClick={() => setRunMode('samples')} />
+                <RunSubTab dataTour="console" label="Console" active={runMode === 'console'} onClick={() => setRunMode('console')} />
+              </div>
               <div className="flex items-center gap-2">
-                <Terminal size={13} />
-                <span className="font-medium">Test against Custom Input</span>
-                {runOutput && (
-                  <span
-                    className="text-[10px] px-1.5 py-0.5 rounded border border-line font-medium"
-                    style={runOutput.status === 'ok'
-                      ? { color: 'var(--ok)', background: 'color-mix(in srgb, var(--ok) 12%, transparent)' }
-                      : { color: 'var(--err)', background: 'color-mix(in srgb, var(--err) 12%, transparent)' }}
-                  >
-                    {runOutput.status === 'ok' ? 'Output ready' : runOutput.status}
+                {runMode === 'samples' && sampleRun?.status === 'ok' && (
+                  <span className="text-[10px] tabular text-t4">
+                    {sampleRun.results.filter(r => r.passed).length}/{sampleRun.results.length} passed
                   </span>
                 )}
+                <button
+                  onClick={() => setCustomInputOpen(o => !o)}
+                  className="text-t4 hover:text-t3 transition-colors p-1"
+                  title={customInputOpen ? 'Collapse' : 'Expand'}
+                >
+                  {customInputOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                </button>
               </div>
-              {customInputOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            </button>
+            </div>
 
             {customInputOpen && (
-              <div className="px-3 pb-3 space-y-2">
-                <textarea
-                  value={customInput}
-                  onChange={e => setCustomInput(e.target.value)}
-                  placeholder="Enter your custom input here..."
-                  className="w-full h-20 surface-inset border border-line rounded px-3 py-2 text-xs text-t2 font-mono resize-none focus:outline-none focus:border-line-strong placeholder-t4"
-                />
-                {runOutput && (
-                  <div
-                    className="rounded border text-xs font-mono"
-                    style={runOutput.status === 'ok'
-                      ? { borderColor: 'color-mix(in srgb, var(--ok) 20%, transparent)', background: 'color-mix(in srgb, var(--ok) 5%, transparent)' }
-                      : { borderColor: 'color-mix(in srgb, var(--err) 20%, transparent)', background: 'color-mix(in srgb, var(--err) 5%, transparent)' }}
-                  >
-                    <div
-                      className="flex justify-between items-center px-2.5 py-1.5 border-b"
-                      style={{ borderColor: runOutput.status === 'ok' ? 'color-mix(in srgb, var(--ok) 15%, transparent)' : 'color-mix(in srgb, var(--err) 15%, transparent)' }}
-                    >
-                      <span
-                        className="text-[10px] uppercase tracking-wide font-sans font-semibold"
-                        style={{ color: runOutput.status === 'ok' ? 'var(--ok)' : 'var(--err)' }}
-                      >
-                        {runOutput.status === 'ok' ? '✓ Output' : '✗ ' + runOutput.status}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        {runOutput.time_ms != null && (
-                          <span className="text-[10px] text-t4 tabular">{runOutput.time_ms.toFixed(1)}ms</span>
-                        )}
-                        <button
-                          onClick={() => setRunOutput(null)}
-                          className="text-t4 hover:text-t3 transition-colors"
-                          title="Clear"
-                        >
-                          <X size={11} />
-                        </button>
-                      </div>
-                    </div>
-                    <pre
-                      className="px-2.5 py-2 whitespace-pre-wrap break-words"
-                      style={{ color: runOutput.status === 'ok' ? 'var(--ok)' : 'var(--err)' }}
-                    >
-                      {runOutput.output || '(no output)'}
-                    </pre>
+              <div className="px-3 py-3">
+                {runMode === 'console' ? (
+                  <InteractiveConsole
+                    status={runner.status}
+                    output={runner.output}
+                    exitCode={runner.exitCode}
+                    onRun={() => { if (code.trim()) runner.start(code); else toast.error('Write some code first!') }}
+                    onStop={runner.stop}
+                    onSend={runner.sendInput}
+                  />
+                ) : (
+                  <div className="max-h-[260px] overflow-y-auto">
+                    <SampleTestsPanel run={sampleRun} samples={visibleSamples} />
                   </div>
                 )}
               </div>
@@ -542,17 +623,22 @@ export default function CodingEnvironment() {
               <Eye size={12} /> Visualize Code
             </button>
             <div className="flex items-center gap-2">
+              {(() => {
+                const busy = runMode === 'console' ? runner.status === 'compiling' : running
+                const label = runMode === 'console'
+                  ? (busy ? 'Compiling…' : (runner.status === 'running' ? 'Restart' : 'Run'))
+                  : (busy ? 'Running…' : 'Run')
+                return (
+                  <button data-tour="run" onClick={handleRun} disabled={busy} className="btn-secondary btn-sm">
+                    {busy
+                      ? <span className="w-3 h-3 border-2 border-line border-t-t rounded-full animate-spin" />
+                      : <Play size={12} fill="currentColor" />}
+                    {label}
+                  </button>
+                )
+              })()}
               <button
-                onClick={handleRun}
-                disabled={running}
-                className="btn-secondary btn-sm"
-              >
-                {running
-                  ? <span className="w-3 h-3 border-2 border-line border-t-t rounded-full animate-spin" />
-                  : <Play size={12} fill="currentColor" />}
-                {running ? 'Running…' : 'Run'}
-              </button>
-              <button
+                data-tour="submit"
                 onClick={() => handleSubmit(true)}
                 disabled={submitting}
                 className="btn-primary btn-sm"
@@ -606,6 +692,193 @@ function IconBtn({ icon, tooltip, onClick }) {
     >
       {icon}
     </button>
+  )
+}
+
+// ── Run panel (self-check, never grades) ────────────────────────────────────────
+
+function RunSubTab({ label, active, onClick, dataTour }) {
+  return (
+    <button
+      data-tour={dataTour}
+      onClick={onClick}
+      className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+        active ? 'text-t' : 'border-transparent text-t4 hover:text-t2'
+      }`}
+      style={active ? { borderColor: 'var(--brand)' } : undefined}
+    >
+      {label}
+    </button>
+  )
+}
+
+function InteractiveConsole({ status, output, exitCode, onRun, onStop, onSend }) {
+  const [draft, setDraft] = useState('')
+  const scrollRef = useRef(null)
+  const inputRef  = useRef(null)
+
+  const running   = status === 'running'
+  const compiling = status === 'compiling'
+  const idle      = status === 'idle'
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+  }, [output, status])
+
+  useEffect(() => {
+    if (running && inputRef.current) inputRef.current.focus()
+  }, [running])
+
+  const submitLine = () => {
+    if (!running) return
+    onSend(draft + '\n')   // PTY echoes the typed text back into the stream
+    setDraft('')
+  }
+
+  return (
+    <div className="space-y-2">
+      {/* status row */}
+      <div className="flex items-center justify-between text-[11px]">
+        <div className="flex items-center gap-2">
+          {idle && <span className="text-t4">Console ready — press Run. Input is asked line-by-line, like CodeBlocks.</span>}
+          {compiling && <span className="text-t4">Compiling…</span>}
+          {running && (
+            <span className="flex items-center gap-1.5" style={{ color: 'var(--ok)' }}>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--ok)' }} />
+              running
+            </span>
+          )}
+          {status === 'exited' && (
+            <span style={{ color: exitCode === 0 ? 'var(--ok)' : 'var(--err)' }}>
+              {exitCode === 0 ? '✓ exited (code 0)' : `✗ exited (code ${exitCode ?? '?'})`}
+            </span>
+          )}
+          {status === 'error' && <span style={{ color: 'var(--err)' }}>✗ error</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          {running ? (
+            <button onClick={onStop} className="px-2 py-0.5 rounded border border-line font-medium" style={{ color: 'var(--err)' }}>
+              ■ Stop
+            </button>
+          ) : (
+            <button onClick={onRun} disabled={compiling} className="px-2 py-0.5 rounded border border-line text-t3 hover:text-t hover:border-line-strong transition-colors disabled:opacity-40">
+              ▶ {idle ? 'Run' : 'Run again'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* terminal */}
+      <div
+        ref={scrollRef}
+        onClick={() => inputRef.current?.focus()}
+        className="h-44 overflow-auto surface-inset border border-line rounded px-3 py-2 font-mono text-xs leading-relaxed cursor-text"
+      >
+        {output
+          ? <pre className="whitespace-pre-wrap break-words text-t2 m-0">{output}</pre>
+          : (idle || compiling) && <span className="text-t4">{compiling ? 'Compiling your program…' : 'Program output will appear here.'}</span>}
+
+        {running && (
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span style={{ color: 'var(--brand)' }}>›</span>
+            <input
+              ref={inputRef}
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submitLine() } }}
+              placeholder="type input + Enter"
+              className="flex-1 bg-transparent outline-none border-0 p-0 text-t placeholder-t4 font-mono text-xs"
+              autoComplete="off"
+              spellCheck="false"
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SampleTestsPanel({ run, samples }) {
+  if (!run) {
+    return (
+      <div className="text-center py-6 text-xs text-t4">
+        {samples.length === 0
+          ? 'No sample cases for this problem — switch to the Console tab.'
+          : <>Press <span className="text-t3 font-semibold">Run</span> to check against {samples.length} sample case{samples.length === 1 ? '' : 's'} (not graded).</>}
+      </div>
+    )
+  }
+  if (run.status === 'Compilation Error') {
+    return (
+      <pre
+        className="text-xs font-mono border rounded-lg p-3 overflow-x-auto whitespace-pre-wrap"
+        style={{ color: 'var(--err)', background: 'color-mix(in srgb, var(--err) 5%, transparent)', borderColor: 'color-mix(in srgb, var(--err) 20%, transparent)' }}
+      >
+        {run.error || 'Compilation failed'}
+      </pre>
+    )
+  }
+  if (run.status === 'Error') {
+    return <p className="text-xs" style={{ color: 'var(--err)' }}>{run.error}</p>
+  }
+  const passedCount = run.results.filter(r => r.passed).length
+  const allPass = passedCount === run.results.length
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-2 text-xs">
+        <span className="font-semibold" style={{ color: allPass ? 'var(--ok)' : 'var(--err)' }}>
+          {allPass ? '✓ All samples passed' : `${passedCount}/${run.results.length} samples passed`}
+        </span>
+        <span className="text-t4">· not graded — press Submit to score</span>
+      </div>
+      {run.results.map((r, i) => <SampleCaseRow key={r.id ?? i} r={r} index={i} />)}
+    </div>
+  )
+}
+
+function SampleCaseRow({ r, index }) {
+  const runFailed = r.run_status !== 'ok'
+  const ok = r.passed
+  const accent = ok ? 'var(--ok)' : 'var(--err)'
+  return (
+    <div
+      className="rounded-lg border overflow-hidden"
+      style={{ borderColor: `color-mix(in srgb, ${accent} 22%, transparent)`, background: `color-mix(in srgb, ${accent} 4%, transparent)` }}
+    >
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b" style={{ borderColor: `color-mix(in srgb, ${accent} 15%, transparent)` }}>
+        {ok ? <CheckCircle size={13} style={{ color: accent }} /> : <XCircle size={13} style={{ color: accent }} />}
+        <span className="text-[11px] font-semibold text-t3">Sample {index + 1}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: accent }}>
+          {runFailed ? r.run_status : (ok ? 'Passed' : 'Failed')}
+        </span>
+        {r.time_ms != null && <span className="ml-auto text-[10px] text-t4 tabular">{r.time_ms.toFixed(1)}ms</span>}
+      </div>
+
+      <div className="px-3 pt-2">
+        <div className="text-[10px] text-t4 font-semibold uppercase tracking-wider mb-1">Input</div>
+        <pre className="font-mono text-xs text-t2 surface-inset border border-line rounded px-2 py-1.5 whitespace-pre-wrap break-words max-h-24 overflow-auto">
+          {r.input || '(none)'}
+        </pre>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 p-3 pt-2">
+        <div>
+          <div className="text-[10px] text-t4 font-semibold uppercase tracking-wider mb-1">Expected Output</div>
+          <pre className="font-mono text-xs text-t2 surface-inset border border-line rounded px-2 py-1.5 whitespace-pre-wrap break-words max-h-32 overflow-auto">
+            {r.expected || '(empty)'}
+          </pre>
+        </div>
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: accent }}>Your Output</div>
+          <pre
+            className="font-mono text-xs rounded px-2 py-1.5 whitespace-pre-wrap break-words max-h-32 overflow-auto border"
+            style={{ color: accent, borderColor: `color-mix(in srgb, ${accent} 25%, transparent)`, background: `color-mix(in srgb, ${accent} 6%, transparent)` }}
+          >
+            {runFailed ? (r.run_status + (r.actual ? '\n' + r.actual : '')) : (r.actual || '(no output)')}
+          </pre>
+        </div>
+      </div>
+    </div>
   )
 }
 

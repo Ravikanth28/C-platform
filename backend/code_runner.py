@@ -29,19 +29,43 @@ def _exe_name(tmpdir: str) -> str:
     return os.path.join(tmpdir, "sol.exe" if os.name == "nt" else "sol")
 
 
-def compile_code(src: str, tmpdir: str) -> tuple[str, str]:
+# Force-included before the student's source for the interactive console so
+# stdout/stderr are UNBUFFERED — every printf streams instantly over a plain
+# pipe, which is what makes prompts appear before scanf (CodeBlocks-style)
+# even without a real terminal.
+_UNBUFFER_HEADER = """#include <stdio.h>
+static void __cf_unbuffer(void) __attribute__((constructor));
+static void __cf_unbuffer(void) {
+    setvbuf(stdout, (char *)0, _IONBF, 0);
+    setvbuf(stderr, (char *)0, _IONBF, 0);
+}
+"""
+
+
+def compile_code(src: str, tmpdir: str, force_unbuffered: bool = False) -> tuple[str, str]:
     """
     Compile C source.  Returns (exe_path, error_message).
     exe_path is empty string on failure.
+
+    force_unbuffered: prepend a constructor that disables stdout buffering —
+    used by the interactive console so output streams live over a pipe.
     """
     src_file = os.path.join(tmpdir, "solution.c")
     exe = _exe_name(tmpdir)
     with open(src_file, "w", encoding="utf-8") as f:
         f.write(src)
 
+    cmd = ["gcc", "-o", exe]
+    if force_unbuffered:
+        hdr = os.path.join(tmpdir, "__cf_unbuffer.h")
+        with open(hdr, "w", encoding="utf-8") as f:
+            f.write(_UNBUFFER_HEADER)
+        cmd += ["-include", hdr]
+    cmd += [src_file, "-Wall", "-lm", "-O2"]
+
     try:
         result = subprocess.run(
-            ["gcc", "-o", exe, src_file, "-Wall", "-lm", "-O2"],
+            cmd,
             capture_output=True,
             text=True,
             timeout=15,
