@@ -6,6 +6,7 @@ import {
   CheckCircle, XCircle, Terminal, Maximize2, Minimize2, ShieldCheck,
   Copy, Settings, Bookmark, BookmarkCheck, ThumbsUp, ThumbsDown,
   MessageSquare, Sparkles, ChevronDown, ChevronUp, X, Eye, HelpCircle,
+  Pause, RotateCcw,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../api/client'
@@ -464,7 +465,7 @@ export default function CodingEnvironment() {
     <>
     <EditorTour open={tourOpen} steps={tourSteps} onClose={closeTour} />
     {showVisualize && (
-      <VisualizeModal code={code} onClose={() => setShowVisualize(false)} />
+      <VisualizeModal code={code} defaultInput={visibleSamples[0]?.input_data || ''} onClose={() => setShowVisualize(false)} />
     )}
     <div ref={containerRef} className="flex flex-col h-screen bg-beige-pg text-t overflow-hidden">
 
@@ -591,8 +592,6 @@ export default function CodingEnvironment() {
               >
                 <HelpCircle size={13} /> Guide
               </button>
-              <IconBtn icon={<Copy size={14} />}     tooltip="Copy code"       onClick={handleCopyCode} />
-              <IconBtn icon={<Settings size={14} />} tooltip="Editor settings" onClick={() => toast('Editor settings coming soon')} />
               <IconBtn
                 icon={isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                 tooltip={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
@@ -645,23 +644,41 @@ export default function CodingEnvironment() {
 
           {/* Run / self-check panel — never grades */}
           <div className="border-t border-line bg-surface-h flex-shrink-0">
-            <div className="flex items-center justify-between pl-2 pr-3 h-9 border-b border-line">
-              <div className="flex items-center gap-1">
+            <div className="flex items-center justify-between gap-2 pl-2 pr-2 h-11 border-b border-line">
+              <div className="flex items-center gap-1 min-w-0">
                 <RunSubTab dataTour="sample-tests" label="Sample Tests" active={runMode === 'samples'} onClick={() => setRunMode('samples')} />
                 <RunSubTab dataTour="console" label="Console" active={runMode === 'console'} onClick={() => setRunMode('console')} />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-shrink-0">
                 {runMode === 'samples' && sampleRun?.status === 'ok' && (
-                  <span className="text-[10px] tabular text-t4">
+                  <span className="hidden sm:inline text-[11px] tabular font-medium"
+                    style={{ color: sampleRun.results.every(r => r.passed) ? 'var(--ok)' : 'var(--err)' }}>
                     {sampleRun.results.filter(r => r.passed).length}/{sampleRun.results.length} passed
                   </span>
                 )}
+                <button onClick={handleVisualize} className="btn-secondary btn-sm" title="Visualize code execution">
+                  <Eye size={12} /> Visualize
+                </button>
+                {(() => {
+                  const busy = runMode === 'console' ? runner.status === 'compiling' : running
+                  const label = runMode === 'console'
+                    ? (busy ? 'Compiling…' : (runner.status === 'running' ? 'Restart' : 'Run'))
+                    : (busy ? 'Running…' : 'Run')
+                  return (
+                    <button data-tour="run" onClick={handleRun} disabled={busy} className="btn-primary btn-sm">
+                      {busy
+                        ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        : <Play size={12} fill="currentColor" />}
+                      {label}
+                    </button>
+                  )
+                })()}
                 <button
                   onClick={() => setCustomInputOpen(o => !o)}
-                  className="text-t4 hover:text-t3 transition-colors p-1"
-                  title={customInputOpen ? 'Collapse' : 'Expand'}
+                  className="text-t4 hover:text-t3 transition-colors p-1 ml-0.5"
+                  title={customInputOpen ? 'Collapse panel' : 'Expand panel'}
                 >
-                  {customInputOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                  {customInputOpen ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
                 </button>
               </div>
             </div>
@@ -678,38 +695,12 @@ export default function CodingEnvironment() {
                     onSend={runner.sendInput}
                   />
                 ) : (
-                  <div className="max-h-[260px] overflow-y-auto">
+                  <div className="max-h-[34vh] overflow-y-auto">
                     <SampleTestsPanel run={sampleRun} samples={visibleSamples} />
                   </div>
                 )}
               </div>
             )}
-          </div>
-
-          {/* Action bar */}
-          <div className="flex items-center justify-between px-3 py-2 border-t border-line bg-beige-pg flex-shrink-0">
-            <button
-              onClick={handleVisualize}
-              className="btn-secondary btn-sm"
-            >
-              <Eye size={12} /> Visualize Code
-            </button>
-            <div className="flex items-center gap-2">
-              {(() => {
-                const busy = runMode === 'console' ? runner.status === 'compiling' : running
-                const label = runMode === 'console'
-                  ? (busy ? 'Compiling…' : (runner.status === 'running' ? 'Restart' : 'Run'))
-                  : (busy ? 'Running…' : 'Run')
-                return (
-                  <button data-tour="run" onClick={handleRun} disabled={busy} className="btn-primary btn-sm">
-                    {busy
-                      ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      : <Play size={12} fill="currentColor" />}
-                    {label}
-                  </button>
-                )
-              })()}
-            </div>
           </div>
         </div>
       </div>
@@ -907,7 +898,7 @@ function InteractiveConsole({ status, output, exitCode, onRun, onStop, onSend })
       <div
         ref={scrollRef}
         onClick={() => inputRef.current?.focus()}
-        className="h-44 overflow-auto surface-inset border border-line rounded px-3 py-2 font-mono text-xs leading-relaxed cursor-text"
+        className="h-52 overflow-auto surface-inset border border-line rounded px-3 py-2 font-mono text-xs leading-relaxed cursor-text"
       >
         {output
           ? <pre className="whitespace-pre-wrap break-words text-t2 m-0">{output}</pre>
@@ -1369,230 +1360,283 @@ function SubmissionResult({ result, problem }) {
   )
 }
 
-// ── Visualize Code Modal ───────────────────────────────────────────────────────
-function VisualizeModal({ code: initialCode, onClose }) {
-  const [input, setInput]       = useState('')
-  const [running, setRunning]   = useState(false)
-  const [output, setOutput]     = useState(null)
-  const [displayedOutput, setDisplayedOutput] = useState('')
-  const [activeCodeLine, setActiveCodeLine]   = useState(null)
-  const outputRef = useRef(null)
+// ── Visualize Code Modal — step-through execution debugger ──────────────────────
+const PRINT_RE = /\b(printf|puts|putchar|fputs|fprintf)\b/
+
+// Plain-English description of what a source line does + which variables changed.
+function explainStep(step, prevLocals, srcLine) {
+  const src = (srcLine || '').trim()
+  let what = 'Runs this statement.'
+  if (/^for\b/.test(src)) what = 'for-loop header — checks the condition and updates the counter on each pass.'
+  else if (/^while\b/.test(src)) what = 'while-loop — keeps repeating while the condition is true.'
+  else if (/^do\b/.test(src)) what = 'do-while loop body — runs at least once.'
+  else if (/^else\s+if\b/.test(src)) what = 'else-if — tests another condition.'
+  else if (/^if\b/.test(src)) what = 'if statement — evaluates a condition to choose a branch.'
+  else if (/^else\b/.test(src)) what = 'else branch — runs because the earlier condition was false.'
+  else if (/\b(scanf|fscanf|gets|fgets|getchar)\b/.test(src)) what = 'Reads input from stdin into the variable(s).'
+  else if (PRINT_RE.test(src)) what = 'Prints text to the program output.'
+  else if (/\breturn\b/.test(src)) what = 'Returns a value and exits the function.'
+  else if (/^(int|char|float|double|long|short|unsigned|void|struct|size_t|bool)\b/.test(src)) what = src.includes('=') ? 'Declares and initialises a variable.' : 'Declares a variable.'
+  else if (/[^=!<>+\-*/%]=[^=]/.test(src)) what = 'Assignment — stores a value into a variable.'
+  else if (/\w+\s*\(.*\)\s*;?\s*$/.test(src)) what = 'Calls a function.'
+  const changes = []
+  const locals = step?.locals || {}
+  for (const k of Object.keys(locals)) {
+    if (!(k in prevLocals)) changes.push(`${k} = ${locals[k]}`)
+    else if (String(prevLocals[k]) !== String(locals[k])) changes.push(`${k}: ${prevLocals[k]} → ${locals[k]}`)
+  }
+  return { what, changes }
+}
+
+function VisualizeModal({ code: initialCode, defaultInput = '', onClose }) {
+  const [input, setInput]   = useState(defaultInput)
+  const [loading, setLoading] = useState(false)
+  const [trace, setTrace]   = useState(null) // { status, steps, output, error }
+  const [idx, setIdx]       = useState(0)
+  const [playing, setPlaying] = useState(false)
+  const [speed, setSpeed]   = useState(900)
+  const activeRef = useRef(null)
+  const outRef = useRef(null)
   const lines = initialCode.split('\n')
 
-  // Typewriter effect for successful output
-  useEffect(() => {
-    if (!output) { setDisplayedOutput(''); return }
-    if (output.status !== 'ok') { setDisplayedOutput(output.output || ''); return }
-    let i = 0
-    const text = output.output || ''
-    setDisplayedOutput('')
-    const iv = setInterval(() => {
-      i++
-      setDisplayedOutput(text.slice(0, i))
-      if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight
-      if (i >= text.length) clearInterval(iv)
-    }, 18)
-    return () => clearInterval(iv)
-  }, [output])
+  const steps = trace?.steps || []
+  const cur = steps[idx] || null
+  const nextStep = steps[idx + 1] || null
+  const prevLocals = idx > 0 ? (steps[idx - 1].locals || {}) : {}
 
-  // Animate current-line highlight while compiling/running
-  useEffect(() => {
-    if (!running) { setActiveCodeLine(null); return }
-    let ln = 0
-    const iv = setInterval(() => {
-      do { ln = (ln + 1) % lines.length } while (lines[ln]?.trim() === '' && ln < lines.length - 1)
-      setActiveCodeLine(ln)
-    }, 260)
-    return () => clearInterval(iv)
-  }, [running, lines.length])
-
-  const handleRun = async () => {
-    setRunning(true)
-    setOutput(null)
-    setDisplayedOutput('')
+  const run = async () => {
+    setLoading(true); setPlaying(false); setTrace(null); setIdx(0)
     try {
-      const { data } = await api.post('/submissions/run', { code: initialCode, custom_input: input })
-      setOutput(data)
+      const { data } = await api.post('/submissions/visualize', { code: initialCode, custom_input: input })
+      setTrace(data); setIdx(0)
     } catch (err) {
-      setOutput({ status: 'Error', output: err.response?.data?.detail || 'Request failed — is the backend running?', time_ms: 0 })
+      setTrace({ status: 'Error', steps: [], output: '', error: err.response?.data?.detail || 'Request failed — is the backend running?' })
     } finally {
-      setRunning(false)
+      setLoading(false)
     }
   }
 
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose() }
+    if (!playing) return
+    if (idx >= steps.length - 1) { setPlaying(false); return }
+    const t = setTimeout(() => setIdx(i => Math.min(i + 1, steps.length - 1)), speed)
+    return () => clearTimeout(t)
+  }, [playing, idx, steps.length, speed])
+
+  useEffect(() => { activeRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, [idx, trace])
+  useEffect(() => { if (outRef.current) outRef.current.scrollTop = outRef.current.scrollHeight }, [idx])
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'Escape') onClose()
+      else if (steps.length) {
+        if (e.key === 'ArrowRight') { setPlaying(false); setIdx(i => Math.min(i + 1, steps.length - 1)) }
+        else if (e.key === 'ArrowLeft') { setPlaying(false); setIdx(i => Math.max(0, i - 1)) }
+      }
+    }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [onClose])
+  }, [onClose, steps.length])
 
-  const isError   = output && output.status !== 'ok'
-  const isSuccess = output && output.status === 'ok'
+  const revealed = steps.slice(0, idx + 1).filter(s => PRINT_RE.test(lines[s.line - 1] || '')).length
+  const outLines = (trace?.output || '').length ? trace.output.split('\n') : []
+  const shownOutput = outLines.slice(0, revealed).join('\n')
+
+  const atEnd = idx >= steps.length - 1
+  const hasSteps = steps.length > 0
+  const isErr = trace && ['Compilation Error', 'NoGDB', 'Error', 'Timeout'].includes(trace.status)
+  const stack = cur?.stack ? [...cur.stack].reverse() : []  // outermost (main) first
+  const exp = cur ? explainStep(cur, prevLocals, lines[cur.line - 1]) : null
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div className="w-[92vw] max-w-7xl h-[88vh] bg-beige-pg border border-line rounded-2xl flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="w-[95vw] max-w-7xl h-[92vh] bg-beige-pg border border-line rounded-2xl flex flex-col shadow-2xl overflow-hidden">
 
-        {/* Modal header */}
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-line bg-surface-h flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <Eye size={16} className="text-brand" />
-            <span className="font-semibold text-t text-sm">Code Visualizer</span>
-            <span className="text-[11px] text-t4 border border-line px-2 py-0.5 rounded">C Language</span>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-2"><Eye size={16} className="text-brand" /><span className="font-semibold text-t text-sm">Code Visualizer</span></span>
+            <span className="hidden sm:flex items-center gap-3 text-[11px] text-t4 ml-2">
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: 'var(--brand)' }} /> Current line</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: 'var(--warn)' }} /> Next line</span>
+            </span>
           </div>
           <div className="flex items-center gap-3">
-            {output && (
-              <span
-                className="text-[11px] px-2 py-0.5 rounded border border-line font-medium tabular"
-                style={isSuccess
-                  ? { color: 'var(--ok)', background: 'color-mix(in srgb, var(--ok) 12%, transparent)' }
-                  : { color: 'var(--err)', background: 'color-mix(in srgb, var(--err) 12%, transparent)' }}
-              >
-                {isSuccess ? `Executed in ${output.time_ms?.toFixed(1)}ms` : output.status}
-              </span>
-            )}
-            <button
-              onClick={handleRun}
-              disabled={running}
-              className="btn-primary btn-sm rounded-lg disabled:opacity-50"
-            >
-              {running
-                ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                : <Play size={12} fill="currentColor" />}
-              {running ? 'Running…' : 'Run'}
+            <button onClick={run} disabled={loading} className="btn-primary btn-sm disabled:opacity-50">
+              {loading ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Play size={12} fill="currentColor" />}
+              {loading ? 'Tracing…' : (hasSteps ? 'Re-run' : 'Run')}
             </button>
-            <button onClick={onClose} className="text-t3 hover:text-t transition-colors p-1 rounded hover:bg-surface-h">
-              <X size={18} />
-            </button>
+            <button onClick={onClose} className="text-t3 hover:text-t transition-colors p-1 rounded hover:bg-surface-h"><X size={18} /></button>
           </div>
         </div>
 
-        {/* Modal body */}
+        {/* Playback controls */}
+        {hasSteps && (
+          <div className="flex items-center gap-3 px-5 py-2 border-b border-line bg-beige-pg flex-shrink-0 flex-wrap">
+            <div className="flex items-center gap-1">
+              <button onClick={() => { setPlaying(false); setIdx(0) }} disabled={idx === 0} title="Start" className="btn-secondary btn-sm">Start</button>
+              <button onClick={() => { setPlaying(false); setIdx(i => Math.max(0, i - 1)) }} disabled={idx === 0} title="Previous (←)" className="p-1.5 rounded-lg text-t3 hover:text-t hover:bg-surface-h disabled:opacity-30 transition-colors"><ChevronLeft size={16} /></button>
+              <button onClick={() => { if (atEnd) setIdx(0); setPlaying(p => !p) }} className="btn-primary btn-sm w-[88px] justify-center">
+                {playing ? <><Pause size={13} /> Pause</> : <><Play size={12} fill="currentColor" /> {atEnd ? 'Replay' : 'Play'}</>}
+              </button>
+              <button onClick={() => { setPlaying(false); setIdx(i => Math.min(steps.length - 1, i + 1)) }} disabled={atEnd} title="Next (→)" className="p-1.5 rounded-lg text-t3 hover:text-t hover:bg-surface-h disabled:opacity-30 transition-colors"><ChevronRight size={16} /></button>
+              <button onClick={() => { setPlaying(false); setIdx(steps.length - 1) }} disabled={atEnd} title="End" className="btn-secondary btn-sm">End</button>
+            </div>
+
+            <input type="range" min={0} max={steps.length - 1} value={idx}
+              onChange={e => { setPlaying(false); setIdx(Number(e.target.value)) }}
+              className="flex-1 min-w-[120px] accent-[color:var(--brand)]" />
+
+            <span className="text-[12px] text-t3 tabular whitespace-nowrap">Step {idx + 1}/{steps.length}</span>
+
+            <div className="flex items-center gap-1 text-[11px]">
+              {[['0.5×', 1500], ['1×', 900], ['2×', 400]].map(([l, v]) => (
+                <button key={v} onClick={() => setSpeed(v)} className="px-1.5 py-0.5 rounded" style={speed === v ? { background: 'var(--brandL)', color: 'var(--brand)' } : { color: 'var(--t4)' }}>{l}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Body */}
         <div className="flex flex-1 overflow-hidden">
 
           {/* Code pane */}
-          <div className="w-[55%] border-r border-line overflow-auto bg-beige-pg">
+          <div className="w-[54%] border-r border-line overflow-auto bg-beige-pg">
             <div className="min-h-full py-3">
               {lines.map((line, i) => {
-                const isActive = activeCodeLine === i
+                const lineNo = i + 1
+                const isCur = cur && cur.line === lineNo
+                const isNext = !isCur && nextStep && nextStep.line === lineNo
+                const bg = isCur ? 'var(--brandGhost)' : isNext ? 'color-mix(in srgb, var(--warn) 14%, transparent)' : 'transparent'
+                const bc = isCur ? 'var(--brand)' : isNext ? 'var(--warn)' : 'transparent'
                 return (
-                  <div
-                    key={i}
-                    className={`flex items-stretch group transition-colors duration-100 border-l-2 ${
-                      isActive ? '' : 'border-transparent'
-                    }`}
-                    style={isActive ? { background: 'var(--brandGhost)', borderColor: 'var(--brand)' } : undefined}
-                  >
-                    <span
-                      className={`select-none text-right pr-4 pl-4 min-w-[3.5rem] text-[11px] leading-6 flex-shrink-0 font-mono ${
-                        isActive ? 'font-bold' : 'text-t4'
-                      }`}
-                      style={isActive ? { color: 'var(--brand)' } : undefined}
-                    >
-                      {i + 1}
+                  <div key={i} ref={isCur ? activeRef : null} className="flex items-stretch border-l-2 transition-colors" style={{ background: bg, borderColor: bc }}>
+                    <span className="select-none text-right pr-4 pl-4 min-w-[3.5rem] text-[11px] leading-6 flex-shrink-0 font-mono"
+                      style={isCur ? { color: 'var(--brand)', fontWeight: 700 } : isNext ? { color: 'var(--warn)', fontWeight: 600 } : { color: 'var(--t4)' }}>
+                      {lineNo}
                     </span>
-                    <pre className={`leading-6 whitespace-pre flex-1 font-mono text-sm pr-6 ${
-                      isActive ? 'text-t' : 'text-t2'
-                    }`}>
+                    <pre className="leading-6 whitespace-pre flex-1 font-mono text-sm pr-6" style={{ color: (isCur || isNext) ? 'var(--t)' : 'var(--t2)' }}>
                       {line || ' '}
                     </pre>
-                    {isActive && running && (
-                      <span className="mr-3 flex items-center flex-shrink-0 gap-0.5">
-                        <span className="w-1 h-1 rounded-full animate-bounce [animation-delay:0ms]" style={{ background: 'var(--brand)' }} />
-                        <span className="w-1 h-1 rounded-full animate-bounce [animation-delay:100ms]" style={{ background: 'var(--brand)' }} />
-                        <span className="w-1 h-1 rounded-full animate-bounce [animation-delay:200ms]" style={{ background: 'var(--brand)' }} />
-                      </span>
-                    )}
+                    {isCur && <span className="mr-3 self-center text-[10px] font-sans font-semibold flex-shrink-0" style={{ color: 'var(--brand)' }}>▶ now</span>}
+                    {isNext && <span className="mr-3 self-center text-[10px] font-sans font-semibold flex-shrink-0" style={{ color: 'var(--warn)' }}>next</span>}
                   </div>
                 )
               })}
             </div>
           </div>
 
-          {/* I/O pane */}
-          <div className="w-[45%] flex flex-col overflow-hidden bg-beige-pg">
+          {/* Right pane */}
+          <div className="w-[46%] flex flex-col overflow-hidden bg-beige-pg">
 
             {/* stdin */}
             <div className="flex-shrink-0 border-b border-line">
-              <div className="px-4 py-2 bg-surface-h flex items-center gap-2">
+              <div className="px-4 py-1.5 bg-surface-h flex items-center gap-2">
                 <Terminal size={12} className="text-t4" />
                 <span className="text-[11px] font-semibold text-t3 uppercase tracking-wide">stdin (input)</span>
+                <span className="text-[10px] text-t4 ml-auto">auto-filled from sample · edit &amp; Re-run</span>
               </div>
-              <textarea
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                placeholder="Enter program input here (optional)…"
-                className="w-full h-24 bg-beige-pg px-4 py-3 text-sm text-t2 font-mono resize-none focus:outline-none placeholder-t4 border-0"
-              />
+              <textarea value={input} onChange={e => setInput(e.target.value)} placeholder="Program input…"
+                className="w-full h-12 bg-beige-pg px-4 py-1.5 text-sm text-t2 font-mono resize-none focus:outline-none placeholder-t4 border-0" />
             </div>
 
-            {/* stdout */}
+            {/* Explanation */}
+            {hasSteps && exp && (
+              <div className="flex-shrink-0 px-4 py-2.5 border-b border-line" style={{ background: 'color-mix(in srgb, var(--warn) 9%, transparent)' }}>
+                <p className="text-[13px] text-t2 leading-snug">
+                  <span className="font-semibold" style={{ color: 'var(--warn)' }}>Line {cur.line}: </span>
+                  {exp.what}
+                </p>
+                {exp.changes.length > 0 && (
+                  <p className="text-[12px] mt-1 font-mono" style={{ color: 'var(--brand)' }}>→ {exp.changes.join(' · ')}</p>
+                )}
+              </div>
+            )}
+
+            {/* Call stack + Variables */}
+            <div className="flex-1 flex overflow-hidden border-b border-line">
+              {/* Call stack */}
+              <div className="w-[38%] flex flex-col overflow-hidden border-r border-line">
+                <div className="px-3 py-2 bg-surface-h border-b border-line flex-shrink-0">
+                  <span className="text-[11px] font-semibold text-t3 uppercase tracking-wide">Call stack</span>
+                </div>
+                <div className="flex-1 overflow-auto p-2 space-y-1">
+                  {!hasSteps ? <p className="text-[12px] text-t4 px-1">—</p> : stack.map((f, i) => {
+                    const innermost = i === stack.length - 1
+                    return (
+                      <div key={i} className="rounded-lg border px-2.5 py-1.5"
+                        style={innermost ? { borderColor: 'color-mix(in srgb, var(--brand) 40%, transparent)', background: 'var(--brandGhost)' } : { borderColor: 'var(--b)', background: 'var(--beige-pill)' }}>
+                        <p className="font-mono text-[12px] font-semibold truncate" style={{ color: innermost ? 'var(--brand)' : 'var(--t2)' }}>{f.func}()</p>
+                        <p className="text-[10px] text-t4 tabular">line {f.line}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              {/* Variables */}
+              <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="px-3 py-2 bg-surface-h border-b border-line flex-shrink-0 flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-t3 uppercase tracking-wide">Variables</span>
+                  {cur && <span className="text-[10px] text-t4 ml-auto font-mono">{cur.func}()</span>}
+                </div>
+                <div className="flex-1 overflow-auto p-2">
+                  {!hasSteps ? (
+                    <p className="text-[13px] text-t4 px-1">{loading ? 'Tracing…' : 'Press Run to watch variables change line-by-line.'}</p>
+                  ) : Object.keys(cur?.locals || {}).length === 0 ? (
+                    <p className="text-[13px] text-t4 px-1">No variables in scope yet.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {Object.entries(cur.locals).map(([k, v]) => {
+                        const changed = String(prevLocals[k]) !== String(v)
+                        return (
+                          <div key={k} className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors"
+                            style={changed ? { borderColor: 'color-mix(in srgb, var(--brand) 45%, transparent)', background: 'var(--brandGhost)' } : { borderColor: 'var(--b)', background: 'var(--beige-pill)' }}>
+                            <span className="font-mono text-[13px] font-semibold" style={{ color: changed ? 'var(--brand)' : 'var(--t2)' }}>{k}</span>
+                            <span className="text-t4 text-xs">=</span>
+                            <span className="font-mono text-[13px] text-t tabular ml-auto break-all text-right">{v}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Output */}
             <div className="flex-1 flex flex-col overflow-hidden">
               <div className="px-4 py-2 bg-surface-h border-b border-line flex items-center justify-between flex-shrink-0">
-                <div className="flex items-center gap-2">
-                  <Terminal size={12} style={{ color: isError ? 'var(--err)' : 'var(--ok)' }} />
-                  <span className="text-[11px] font-semibold text-t3 uppercase tracking-wide">
-                    {isError ? 'Error / stderr' : 'stdout (output)'}
-                  </span>
+                <span className="text-[11px] font-semibold text-t3 uppercase tracking-wide flex items-center gap-2"><Terminal size={12} style={{ color: 'var(--ok)' }} /> Output</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-[11px] text-t4 tabular">{outLines.slice(0, revealed).filter(Boolean).length} line{revealed === 1 ? '' : 's'}</span>
+                  {atEnd && trace?.output && (
+                    <button onClick={() => navigator.clipboard.writeText(trace.output)} className="flex items-center gap-1 text-[11px] text-t4 hover:text-t3 transition-colors"><Copy size={10} /> Copy</button>
+                  )}
                 </div>
-                {output?.output && (
-                  <button
-                    onClick={() => navigator.clipboard.writeText(output.output)}
-                    className="flex items-center gap-1 text-[11px] text-t4 hover:text-t3 transition-colors"
-                  >
-                    <Copy size={10} /> Copy
-                  </button>
-                )}
               </div>
-
-              <div ref={outputRef} className="flex-1 overflow-auto px-4 py-3">
-                {!output && !running && (
-                  <div className="h-full flex flex-col items-center justify-center text-center space-y-3 opacity-40">
-                    <Play size={28} className="text-t4" />
-                    <p className="text-sm text-t4">Click <span className="text-t3 font-semibold">Run</span> to execute your code</p>
-                  </div>
-                )}
-                {running && !output && (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="text-center space-y-3">
-                      <div className="flex gap-1.5 justify-center">
-                        {[0, 150, 300].map(d => (
-                          <span key={d} className="w-2 h-2 rounded-full animate-bounce" style={{ background: 'var(--brand)', animationDelay: `${d}ms` }} />
-                        ))}
-                      </div>
-                      <p className="text-xs text-t4">Compiling &amp; running…</p>
-                    </div>
-                  </div>
-                )}
-                {output && (
-                  <pre
-                    className="font-mono text-sm leading-relaxed whitespace-pre-wrap break-words"
-                    style={{ color: isError ? 'var(--err)' : 'var(--ok)' }}
-                  >
-                    {displayedOutput || output.output || '(no output)'}
-                    {isSuccess && displayedOutput === output.output && (
-                      <span className="animate-pulse" style={{ color: 'var(--ok)' }}>▋</span>
-                    )}
+              <div ref={outRef} className="flex-1 overflow-auto px-3 py-2 font-mono text-sm">
+                {isErr ? (
+                  <pre className="text-xs whitespace-pre-wrap break-words" style={{ color: 'var(--err)' }}>
+                    {trace.status === 'NoGDB' ? 'Step-visualizer needs gdb on the server (msys2: pacman -S mingw-w64-ucrt-x86_64-gdb), then retry.' : (trace.error || trace.status)}
                   </pre>
+                ) : !hasSteps ? (
+                  <p className="text-[13px] text-t4 font-sans">Output appears here as each printf runs.</p>
+                ) : (
+                  <div className="leading-relaxed">
+                    {outLines.slice(0, revealed).map((ln, i, arr) => {
+                      const fresh = i === arr.length - 1 && cur && PRINT_RE.test(lines[cur.line - 1] || '')
+                      return (
+                        <div key={i} className="px-2 py-0.5 rounded whitespace-pre-wrap break-words transition-colors"
+                          style={fresh ? { background: 'color-mix(in srgb, var(--ok) 20%, transparent)', color: 'var(--ok)', fontWeight: 600 } : { color: 'var(--ok)' }}>
+                          {ln === '' ? ' ' : ln}
+                        </div>
+                      )
+                    })}
+                    {!atEnd && <span className="animate-pulse px-2" style={{ color: 'var(--brand)' }}>▋</span>}
+                  </div>
                 )}
               </div>
-
-              {output && (
-                <div className="flex-shrink-0 border-t border-line px-4 py-2 bg-surface-h flex items-center gap-4 text-[11px] text-t4">
-                  <span className="font-semibold" style={{ color: isSuccess ? 'var(--ok)' : 'var(--err)' }}>
-                    {isSuccess ? '✓ Execution successful' : '✗ ' + output.status}
-                  </span>
-                  {output.time_ms != null && (
-                    <span className="tabular">Time: <span className="text-t3">{output.time_ms.toFixed(2)}ms</span></span>
-                  )}
-                  {isSuccess && (
-                    <span className="tabular">Output lines: <span className="text-t3">{(output.output || '').split('\n').filter(Boolean).length}</span></span>
-                  )}
-                </div>
-              )}
             </div>
           </div>
         </div>

@@ -36,6 +36,148 @@ class RunSamplesRequest(BaseModel):
     cases: List[SampleCase] = []
 
 
+# gdb python script: step through the program (next), recording the current
+# line + local variables at each step. Program stdout -> OUT file (clean),
+# the JSON trace -> our stdout (parsed by the marker).
+_TRACE_PY = r'''
+import gdb, json
+gdb.execute("set pagination off")
+gdb.execute("set print pretty off")
+steps = []
+err = None
+MAX = 500
+try:
+    gdb.execute("break main")
+    gdb.execute('run < "__IN__" > "__OUT__"')
+except gdb.error as e:
+    err = str(e)
+
+def frame_locals(frame):
+    out = {}
+    try:
+        block = frame.block()
+        seen = set()
+        while block is not None:
+            for sym in block:
+                try:
+                    if (sym.is_variable or sym.is_argument) and sym.name not in seen:
+                        seen.add(sym.name)
+                        out[sym.name] = str(sym.value(frame))
+                except Exception:
+                    pass
+            if block.function is not None:
+                break
+            block = block.superblock
+    except Exception:
+        pass
+    return out
+
+def get_stack():
+    frames = []
+    try:
+        f = gdb.newest_frame()
+        depth = 0
+        while f is not None and depth < 40:
+            try:
+                sal = f.find_sal()
+                line = sal.line if sal else 0
+            except Exception:
+                line = 0
+            frames.append({"func": f.name() or "??", "line": line})
+            f = f.older()
+            depth += 1
+    except Exception:
+        pass
+    return frames
+
+if err is None:
+    while True:
+        try:
+            frame = gdb.newest_frame()
+            sal = frame.find_sal()
+            line = sal.line
+            func = frame.name()
+        except gdb.error:
+            break
+        if line and line > 0:
+            steps.append({"line": line, "func": func, "locals": frame_locals(frame), "stack": get_stack()})
+        if len(steps) >= MAX:
+            break
+        try:
+            gdb.execute("step")   # step INTO user-defined functions (library calls are stepped over)
+        except gdb.error:
+            break
+
+print("TRACE_JSON:" + json.dumps({"steps": steps, "error": err}))
+'''
+
+
+class VisualizeRequest(BaseModel):
+    code: str
+    custom_input: str = ""
+
+
+@router.post("/visualize")
+def visualize(payload: VisualizeRequest, _user: models.User = Depends(get_current_user)):
+    """
+    Step-by-step execution trace (line + variable values per step) via gdb,
+    for the Code Visualizer. Falls back gracefully if gdb is unavailable.
+    """
+    import json as _json
+    import os as _os
+    import subprocess as _sp
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_fwd = tmp.replace("\\", "/")
+        src = _os.path.join(tmp, "sol.c")
+        with open(src, "w", encoding="utf-8") as f:
+            f.write(payload.code)
+        exe = _os.path.join(tmp, "sol.exe" if _os.name == "nt" else "sol")
+
+        comp = _sp.run(["gcc", "-g", "-O0", "-o", exe, src, "-lm"],
+                       capture_output=True, text=True, timeout=15)
+        if comp.returncode != 0:
+            return {"status": "Compilation Error", "error": comp.stderr, "steps": [], "output": ""}
+
+        with open(_os.path.join(tmp, "in.txt"), "w", encoding="utf-8") as f:
+            f.write(payload.custom_input or "")
+        script = _os.path.join(tmp, "trace.py")
+        with open(script, "w", encoding="utf-8") as f:
+            f.write(_TRACE_PY.replace("__IN__", tmp_fwd + "/in.txt").replace("__OUT__", tmp_fwd + "/out.txt"))
+
+        try:
+            g = _sp.run(["gdb", "--batch", "--nx", "-q", "--command=" + script, exe],
+                        capture_output=True, text=True, timeout=25)
+        except FileNotFoundError:
+            return {"status": "NoGDB", "error": "gdb is not installed on the server.", "steps": [], "output": ""}
+        except _sp.TimeoutExpired:
+            return {"status": "Timeout", "error": "Tracing timed out (program ran too long).", "steps": [], "output": ""}
+
+        steps, trace_err = [], None
+        for line in (g.stdout or "").splitlines():
+            if line.startswith("TRACE_JSON:"):
+                try:
+                    data = _json.loads(line[len("TRACE_JSON:"):])
+                    steps = data.get("steps", []) or []
+                    trace_err = data.get("error")
+                except Exception:
+                    pass
+
+        prog_out = ""
+        op = _os.path.join(tmp, "out.txt")
+        if _os.path.exists(op):
+            try:
+                prog_out = open(op, encoding="utf-8", errors="replace").read()
+            except Exception:
+                prog_out = ""
+
+        if not steps:
+            msg = trace_err or (g.stderr[:300] if g.stderr else "Could not trace this program.")
+            return {"status": "Error", "error": msg, "steps": [], "output": _normalize(prog_out)[:65536]}
+
+        return {"status": "ok", "steps": steps[:500], "output": _normalize(prog_out)[:65536]}
+
+
 @router.post("/run")
 def run_code(
     payload: RunRequest,
