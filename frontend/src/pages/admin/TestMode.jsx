@@ -103,7 +103,7 @@ function ProblemForm({ onSave, onCancel }) {
             <label className="label">Assign To</label>
             <div className="flex gap-3 mb-2">
               {[['All Students', true], ['Specific Students', false]].map(([lbl, val]) => (
-                <label key={lbl} className="flex items-center gap-2 cursor-pointer text-sm text-slate-300">
+                <label key={lbl} className="flex items-center gap-2 cursor-pointer text-sm text-t2">
                   <input type="radio" className="accent-primary" checked={form.is_for_all === val}
                     onChange={() => setForm({ ...form, is_for_all: val })} />{lbl}
                 </label>
@@ -118,8 +118,8 @@ function ProblemForm({ onSave, onCancel }) {
           {/* Proctoring */}
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <ShieldCheck size={15} className="text-violet-400" />
-              <label className="label !mb-0 text-violet-300">Proctoring Options</label>
+              <ShieldCheck size={15} style={{ color: 'var(--d-purple)' }} />
+              <label className="label !mb-0" style={{ color: 'var(--d-purple)' }}>Proctoring Options</label>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {[
@@ -130,8 +130,9 @@ function ProblemForm({ onSave, onCancel }) {
               ].map(([key, label]) => (
                 <label key={key}
                   className={`flex items-center gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${
-                    form[key] ? 'border-violet/40 bg-violet/8 text-violet-300' : 'border-[rgba(255,255,255,0.06)] text-slate-400 hover:border-violet/20'
-                  }`}>
+                    form[key] ? 'border-line-strong' : 'border-line text-t3 hover:border-line-strong'
+                  }`}
+                  style={form[key] ? { background: 'var(--brandGhost)', color: 'var(--d-purple)' } : undefined}>
                   <input type="checkbox" className="accent-violet" checked={form[key]} onChange={set(key)} />
                   <span className="text-sm">{label}</span>
                 </label>
@@ -147,8 +148,8 @@ function ProblemForm({ onSave, onCancel }) {
 
       {step === 2 && (
         <div className="space-y-4">
-          <div className="rounded-lg border border-violet/20 bg-violet/5 p-4">
-            <p className="text-xs font-semibold text-violet-300 mb-3 flex items-center gap-1">
+          <div className="rounded-lg border border-line p-4" style={{ background: 'var(--brandGhost)' }}>
+            <p className="text-xs font-semibold mb-3 flex items-center gap-1" style={{ color: 'var(--d-purple)' }}>
               <span>⚡</span> AI Generator (Cerebras)
             </p>
             <div className="grid grid-cols-2 gap-2 mb-2">
@@ -168,20 +169,20 @@ function ProblemForm({ onSave, onCancel }) {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="label !mb-0">Test Cases</label>
-              <button type="button" onClick={addTc} className="btn-ghost text-xs"><Plus size={13} /> Add</button>
+              <button type="button" onClick={addTc} className="btn-ghost btn-sm"><Plus size={13} /> Add</button>
             </div>
             <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
               {form.test_cases.map((tc, i) => (
-                <div key={i} className="rounded-lg border border-[rgba(255,255,255,0.06)] p-3 space-y-2">
+                <div key={i} className="rounded-lg border border-line p-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-400">Case #{i + 1}</span>
+                    <span className="text-xs font-semibold text-t3 tabular">Case #{i + 1}</span>
                     <div className="flex items-center gap-3">
-                      <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
+                      <label className="flex items-center gap-1.5 text-xs text-t3 cursor-pointer">
                         <input type="checkbox" className="accent-primary" checked={tc.is_hidden}
                           onChange={(e) => setTc(i, 'is_hidden', e.target.checked)} /> Hidden
                       </label>
                       {form.test_cases.length > 1 && (
-                        <button type="button" onClick={() => removeTc(i)} className="text-rose-400">
+                        <button type="button" onClick={() => removeTc(i)} style={{ color: 'var(--err)' }}>
                           <Trash2 size={13} /></button>
                       )}
                     </div>
@@ -247,8 +248,8 @@ export default function TestMode() {
     <div className="space-y-5 animate-fade-in">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-white">Test Mode</h1>
-          <p className="text-slate-400 text-sm mt-0.5">Create proctored tests for students</p>
+          <h1 className="h1">Test Mode</h1>
+          <p className="section-sub mt-0.5">Create proctored tests for students</p>
         </div>
         <button onClick={() => setShowModal(true)} className="btn-primary">
           <Plus size={16} /> Create Test
@@ -256,32 +257,32 @@ export default function TestMode() {
       </div>
 
       <div className="relative max-w-xs">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-t4" />
         <input className="input pl-8" placeholder="Search tests…" value={search}
           onChange={(e) => setSearch(e.target.value)} />
       </div>
 
       {filtered.length === 0 ? (
         <div className="card text-center py-16">
-          <FlaskConical size={40} className="mx-auto text-slate-600 mb-3" />
-          <p className="text-slate-400">No tests yet.</p>
+          <FlaskConical size={40} className="mx-auto text-t4 mb-3" />
+          <p className="text-t3">No tests yet.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((p) => (
             <div key={p.id} className="card-hover">
               <div className="flex items-start justify-between mb-2">
-                <h3 className="font-semibold text-white text-sm line-clamp-2 flex-1 pr-2">{p.title}</h3>
-                <button onClick={() => handleDelete(p.id)} className="btn-ghost text-rose-400 p-1">
+                <h3 className="h3 text-sm line-clamp-2 flex-1 pr-2">{p.title}</h3>
+                <button onClick={() => handleDelete(p.id)} className="btn-ghost p-1" style={{ color: 'var(--err)' }}>
                   <Trash2 size={14} /></button>
               </div>
               <div className="flex flex-wrap gap-1.5 mb-2">
                 <DifficultyBadge level={p.difficulty} />
-                <span className="badge-violet badge">{p.test_cases_count} cases</span>
+                <span className="badge-violet badge tabular">{p.test_cases_count} cases</span>
                 {p.fullscreen_required && <span className="badge-violet badge">🔒 Fullscreen</span>}
                 {p.tab_switch_detect   && <span className="badge-yellow badge">⚠ Tab Switch</span>}
               </div>
-              {p.duration && <p className="text-xs text-slate-500">Duration: {p.duration} min</p>}
+              {p.duration && <p className="text-xs text-t4 tabular">Duration: {p.duration} min</p>}
             </div>
           ))}
         </div>

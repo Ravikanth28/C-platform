@@ -11,6 +11,7 @@ import toast from 'react-hot-toast'
 import api from '../api/client'
 import { StatusBadge } from '../components/ui/Badge'
 import { PageLoader } from '../components/ui/LoadingSpinner'
+import { useTheme } from '../context/ThemeContext'
 
 const DEFAULT_C = `#include <stdio.h>\n\nint main() {\n    // Write your solution here\n    \n    return 0;\n}\n`
 
@@ -19,6 +20,7 @@ export default function CodingEnvironment() {
   const [searchParams] = useSearchParams()
   const isTestMode = searchParams.get('mode') === 'test'
   const navigate = useNavigate()
+  const { isDark } = useTheme()
 
   const [problem, setProblem]         = useState(null)
   const [allProblems, setAllProblems] = useState([])
@@ -202,7 +204,7 @@ export default function CodingEnvironment() {
   const progressPct = allProblems.length > 1 ? Math.round(((currentIndex + 1) / allProblems.length) * 100) : 0
 
   if (loading) return (
-    <div className="flex h-screen bg-[#0d1117] items-center justify-center">
+    <div className="flex h-screen bg-beige-pg items-center justify-center">
       <PageLoader />
     </div>
   )
@@ -213,36 +215,36 @@ export default function CodingEnvironment() {
     {showVisualize && (
       <VisualizeModal code={code} onClose={() => setShowVisualize(false)} />
     )}
-    <div ref={containerRef} className="flex flex-col h-screen bg-[#0d1117] text-white overflow-hidden">
+    <div ref={containerRef} className="flex flex-col h-screen bg-beige-pg text-t overflow-hidden">
 
       {/* TOP BAR */}
-      <header className="flex items-center justify-between px-4 h-11 border-b border-white/[0.07] bg-[#161b22] flex-shrink-0">
+      <header className="flex items-center justify-between px-4 h-11 border-b border-line bg-surface-h flex-shrink-0">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-white transition-colors">
+          <button onClick={() => navigate(-1)} className="text-t3 hover:text-t transition-colors">
             <ChevronLeft size={18} />
           </button>
           <button
             onClick={() => setBookmarked(b => !b)}
-            className={`transition-colors ${bookmarked ? 'text-yellow-400' : 'text-slate-400 hover:text-white'}`}
+            className={`transition-colors ${bookmarked ? '' : 'text-t3 hover:text-t'}`}
+            style={bookmarked ? { color: 'var(--warn)' } : undefined}
           >
             {bookmarked ? <BookmarkCheck size={17} /> : <Bookmark size={17} />}
           </button>
-          <div className={`flex items-center gap-1.5 font-mono text-sm px-2 py-0.5 rounded border ${
-            problem.duration && timer > problem.duration * 60 * 0.85
-              ? 'text-rose-400 border-rose-500/30 bg-rose-500/10'
-              : 'text-slate-300 border-white/10 bg-[#0d1117]'
-          }`}>
+          <div
+            className="flex items-center gap-1.5 font-mono text-sm px-2 py-0.5 rounded border border-line surface-inset tabular"
+            style={problem.duration && timer > problem.duration * 60 * 0.85 ? { color: 'var(--err)' } : { color: 'var(--t2)' }}
+          >
             <Clock size={13} />
             {fmtTime(timer)}
-            {problem.duration && <span className="text-slate-500">/{fmtTime(problem.duration * 60)}</span>}
+            {problem.duration && <span className="text-t4">/{fmtTime(problem.duration * 60)}</span>}
           </div>
           {tabSwitches > 0 && (
-            <span className="flex items-center gap-1 text-amber-400 text-xs bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded">
+            <span className="flex items-center gap-1 text-xs border border-line px-2 py-0.5 rounded tabular" style={{ color: 'var(--warn)', background: 'color-mix(in srgb, var(--warn) 12%, transparent)' }}>
               <AlertTriangle size={11} /> {tabSwitches} switches
             </span>
           )}
           {isTestMode && (
-            <span className="flex items-center gap-1 text-violet-400 text-[11px] bg-violet-400/10 border border-violet-400/20 px-2 py-0.5 rounded">
+            <span className="flex items-center gap-1 text-[11px] border border-line px-2 py-0.5 rounded" style={{ color: 'var(--d-purple)', background: 'color-mix(in srgb, var(--d-purple) 12%, transparent)' }}>
               <ShieldCheck size={11} /> Proctored
             </span>
           )}
@@ -252,20 +254,20 @@ export default function CodingEnvironment() {
           <button
             onClick={goPrev}
             disabled={!prevProblem}
-            className="flex items-center gap-1 text-xs text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors font-medium whitespace-nowrap"
+            className="flex items-center gap-1 text-xs text-t3 hover:text-t disabled:opacity-30 disabled:cursor-not-allowed transition-colors font-medium whitespace-nowrap"
           >
             <ChevronLeft size={14} /> Prev
           </button>
-          <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+          <div className="flex-1 h-1.5 surface-inset rounded-full overflow-hidden">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all duration-500"
-              style={{ width: `${progressPct}%` }}
+              className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${progressPct}%`, background: 'var(--brand)' }}
             />
           </div>
           <button
             onClick={goNext}
             disabled={!nextProblem}
-            className="flex items-center gap-1 text-xs text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors font-medium whitespace-nowrap"
+            className="flex items-center gap-1 text-xs text-t3 hover:text-t disabled:opacity-30 disabled:cursor-not-allowed transition-colors font-medium whitespace-nowrap"
           >
             Next <ChevronRight size={14} />
           </button>
@@ -273,10 +275,10 @@ export default function CodingEnvironment() {
 
         <div className="flex items-center gap-2">
           {allProblems.length > 0 && (
-            <span className="text-xs text-slate-500">{currentIndex + 1} / {allProblems.length}</span>
+            <span className="text-xs text-t4 tabular">{currentIndex + 1} / {allProblems.length}</span>
           )}
           {isTestMode && (
-            <button onClick={isFullscreen ? exitFullscreen : requestFullscreen} className="text-slate-400 hover:text-white transition-colors">
+            <button onClick={isFullscreen ? exitFullscreen : requestFullscreen} className="text-t3 hover:text-t transition-colors">
               {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
           )}
@@ -287,8 +289,8 @@ export default function CodingEnvironment() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* LEFT PANEL */}
-        <div className="w-[44%] min-w-[300px] max-w-[560px] flex flex-col border-r border-white/[0.07] overflow-hidden">
-          <div className="flex border-b border-white/[0.07] bg-[#161b22] flex-shrink-0">
+        <div className="w-[44%] min-w-[300px] max-w-[560px] flex flex-col border-r border-line overflow-hidden">
+          <div className="flex border-b border-line bg-surface-h flex-shrink-0">
             <TabBtn label="Statement" active={activeTab === 'statement' && !showResult} onClick={() => { setActiveTab('statement'); setShowResult(false) }} />
             <TabBtn label="AI Help"   active={activeTab === 'aihelp'   && !showResult} onClick={() => { setActiveTab('aihelp');   setShowResult(false) }} />
             {showResult && <TabBtn label="Result" active={showResult} onClick={() => setShowResult(true)} variant="result" />}
@@ -297,15 +299,15 @@ export default function CodingEnvironment() {
           <div className={`flex-1 overflow-hidden ${activeTab === 'aihelp' && !showResult ? 'flex flex-col' : 'overflow-y-auto'}`}>
             {activeTab === 'statement' && !showResult && (
               <div className="flex flex-col">
-                <div className="px-4 pt-3 pb-2 border-b border-white/[0.05]">
+                <div className="px-4 pt-3 pb-2 border-b border-line">
                   <button
                     onClick={() => setActiveTab('aihelp')}
-                    className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors group"
+                    className="flex items-center gap-2 text-sm text-brand hover:opacity-80 transition-colors group"
                   >
                     <Sparkles size={14} />
                     <span className="font-medium">Switch to AI Tutor Mode</span>
                     <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
-                    <span className="text-[10px] bg-orange-500 text-white px-1.5 py-0.5 rounded font-bold tracking-wide">NEW</span>
+                    <span className="text-[10px] text-white px-1.5 py-0.5 rounded font-bold tracking-wide" style={{ background: 'var(--d-orange)' }}>NEW</span>
                   </button>
                 </div>
                 <ProblemStatement problem={problem} liked={liked} setLiked={setLiked} />
@@ -329,12 +331,12 @@ export default function CodingEnvironment() {
 
         {/* RIGHT PANEL */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-          <div className="flex items-center justify-between px-3 h-10 border-b border-white/[0.07] bg-[#161b22] flex-shrink-0">
+          <div className="flex items-center justify-between px-3 h-10 border-b border-line bg-surface-h flex-shrink-0">
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 bg-[#0d1117] border border-white/10 rounded px-2.5 py-1 text-xs text-slate-300 cursor-default select-none">
-                <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />
+              <div className="flex items-center gap-1.5 surface-inset border border-line rounded px-2.5 py-1 text-xs text-t2 cursor-default select-none">
+                <span className="w-2 h-2 rounded-full inline-block" style={{ background: 'var(--info)' }} />
                 C Language
-                <ChevronDown size={11} className="text-slate-500" />
+                <ChevronDown size={11} className="text-t4" />
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -354,7 +356,7 @@ export default function CodingEnvironment() {
               language="c"
               value={code}
               onChange={(v) => setCode(v || '')}
-              theme="vs-dark"
+              theme={isDark ? 'vs-dark' : 'light'}
               options={{
                 fontSize: 14,
                 fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
@@ -371,20 +373,21 @@ export default function CodingEnvironment() {
           </div>
 
           {/* Custom Input */}
-          <div className="border-t border-white/[0.07] bg-[#161b22] flex-shrink-0">
+          <div className="border-t border-line bg-surface-h flex-shrink-0">
             <button
               onClick={() => setCustomInputOpen(o => !o)}
-              className="w-full flex items-center justify-between px-4 py-2 text-xs text-slate-400 hover:text-white hover:bg-white/[0.03] transition-colors"
+              className="w-full flex items-center justify-between px-4 py-2 text-xs text-t3 hover:text-t hover:bg-surface-h transition-colors"
             >
               <div className="flex items-center gap-2">
                 <Terminal size={13} />
                 <span className="font-medium">Test against Custom Input</span>
                 {runOutput && (
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${
-                    runOutput.status === 'ok'
-                      ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20'
-                      : 'text-rose-400 bg-rose-400/10 border-rose-400/20'
-                  }`}>
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded border border-line font-medium"
+                    style={runOutput.status === 'ok'
+                      ? { color: 'var(--ok)', background: 'color-mix(in srgb, var(--ok) 12%, transparent)' }
+                      : { color: 'var(--err)', background: 'color-mix(in srgb, var(--err) 12%, transparent)' }}
+                  >
                     {runOutput.status === 'ok' ? 'Output ready' : runOutput.status}
                   </span>
                 )}
@@ -398,38 +401,42 @@ export default function CodingEnvironment() {
                   value={customInput}
                   onChange={e => setCustomInput(e.target.value)}
                   placeholder="Enter your custom input here..."
-                  className="w-full h-20 bg-[#0d1117] border border-white/10 rounded px-3 py-2 text-xs text-slate-300 font-mono resize-none focus:outline-none focus:border-blue-500/50 placeholder-slate-600"
+                  className="w-full h-20 surface-inset border border-line rounded px-3 py-2 text-xs text-t2 font-mono resize-none focus:outline-none focus:border-line-strong placeholder-t4"
                 />
                 {runOutput && (
-                  <div className={`rounded border text-xs font-mono ${
-                    runOutput.status === 'ok'
-                      ? 'bg-emerald-500/5 border-emerald-500/20'
-                      : 'bg-rose-500/5 border-rose-500/20'
-                  }`}>
-                    <div className={`flex justify-between items-center px-2.5 py-1.5 border-b ${
-                      runOutput.status === 'ok' ? 'border-emerald-500/15' : 'border-rose-500/15'
-                    }`}>
-                      <span className={`text-[10px] uppercase tracking-wide font-sans font-semibold ${
-                        runOutput.status === 'ok' ? 'text-emerald-400' : 'text-rose-400'
-                      }`}>
+                  <div
+                    className="rounded border text-xs font-mono"
+                    style={runOutput.status === 'ok'
+                      ? { borderColor: 'color-mix(in srgb, var(--ok) 20%, transparent)', background: 'color-mix(in srgb, var(--ok) 5%, transparent)' }
+                      : { borderColor: 'color-mix(in srgb, var(--err) 20%, transparent)', background: 'color-mix(in srgb, var(--err) 5%, transparent)' }}
+                  >
+                    <div
+                      className="flex justify-between items-center px-2.5 py-1.5 border-b"
+                      style={{ borderColor: runOutput.status === 'ok' ? 'color-mix(in srgb, var(--ok) 15%, transparent)' : 'color-mix(in srgb, var(--err) 15%, transparent)' }}
+                    >
+                      <span
+                        className="text-[10px] uppercase tracking-wide font-sans font-semibold"
+                        style={{ color: runOutput.status === 'ok' ? 'var(--ok)' : 'var(--err)' }}
+                      >
                         {runOutput.status === 'ok' ? '✓ Output' : '✗ ' + runOutput.status}
                       </span>
                       <div className="flex items-center gap-2">
                         {runOutput.time_ms != null && (
-                          <span className="text-[10px] text-slate-500">{runOutput.time_ms.toFixed(1)}ms</span>
+                          <span className="text-[10px] text-t4 tabular">{runOutput.time_ms.toFixed(1)}ms</span>
                         )}
                         <button
                           onClick={() => setRunOutput(null)}
-                          className="text-slate-600 hover:text-slate-400 transition-colors"
+                          className="text-t4 hover:text-t3 transition-colors"
                           title="Clear"
                         >
                           <X size={11} />
                         </button>
                       </div>
                     </div>
-                    <pre className={`px-2.5 py-2 whitespace-pre-wrap break-words ${
-                      runOutput.status === 'ok' ? 'text-emerald-300' : 'text-rose-400'
-                    }`}>
+                    <pre
+                      className="px-2.5 py-2 whitespace-pre-wrap break-words"
+                      style={{ color: runOutput.status === 'ok' ? 'var(--ok)' : 'var(--err)' }}
+                    >
                       {runOutput.output || '(no output)'}
                     </pre>
                   </div>
@@ -439,10 +446,10 @@ export default function CodingEnvironment() {
           </div>
 
           {/* Action bar */}
-          <div className="flex items-center justify-between px-3 py-2 border-t border-white/[0.07] bg-[#0d1117] flex-shrink-0">
+          <div className="flex items-center justify-between px-3 py-2 border-t border-line bg-beige-pg flex-shrink-0">
             <button
               onClick={handleVisualize}
-              className="flex items-center gap-1.5 text-xs text-slate-300 border border-white/15 hover:border-white/30 hover:text-white px-3 py-1.5 rounded transition-colors"
+              className="btn-secondary btn-sm"
             >
               <Eye size={12} /> Visualize Code
             </button>
@@ -450,17 +457,17 @@ export default function CodingEnvironment() {
               <button
                 onClick={handleRun}
                 disabled={running}
-                className="flex items-center gap-1.5 text-xs text-white border border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded transition-colors disabled:opacity-50"
+                className="btn-secondary btn-sm"
               >
                 {running
-                  ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ? <span className="w-3 h-3 border-2 border-line border-t-t rounded-full animate-spin" />
                   : <Play size={12} fill="currentColor" />}
                 {running ? 'Running…' : 'Run'}
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="flex items-center gap-1.5 text-xs text-white bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded transition-colors font-medium disabled:opacity-50"
+                className="btn-primary btn-sm"
               >
                 {submitting
                   ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -470,7 +477,7 @@ export default function CodingEnvironment() {
               <button
                 onClick={goNext}
                 disabled={!nextProblem}
-                className="flex items-center gap-1.5 text-xs text-slate-300 border border-white/15 hover:border-white/30 hover:text-white px-3 py-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="btn-secondary btn-sm disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 Next <ChevronRight size={12} />
               </button>
@@ -486,15 +493,16 @@ export default function CodingEnvironment() {
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
 function TabBtn({ label, active, onClick, variant }) {
-  const activeClass = variant === 'result'
-    ? 'border-emerald-400 text-emerald-400'
-    : 'border-blue-500 text-white'
+  const activeStyle = variant === 'result'
+    ? { color: 'var(--ok)', borderColor: 'var(--ok)' }
+    : { color: 'var(--t)', borderColor: 'var(--brand)' }
   return (
     <button
       onClick={onClick}
       className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
-        active ? activeClass : 'border-transparent text-slate-500 hover:text-slate-300'
+        active ? '' : 'border-transparent text-t4 hover:text-t2'
       }`}
+      style={active ? activeStyle : undefined}
     >
       {label}
     </button>
@@ -506,7 +514,7 @@ function IconBtn({ icon, tooltip, onClick }) {
     <button
       onClick={onClick}
       title={tooltip}
-      className="p-1.5 text-slate-400 hover:text-white hover:bg-white/[0.06] rounded transition-colors"
+      className="p-1.5 text-t3 hover:text-t hover:bg-surface-h rounded transition-colors"
     >
       {icon}
     </button>
@@ -520,55 +528,58 @@ function ProblemStatement({ problem: p, liked, setLiked }) {
   return (
     <div className="px-4 py-4 space-y-5">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${
-          p.difficulty === 'easy'  ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20'
-          : p.difficulty === 'hard' ? 'text-rose-400 bg-rose-400/10 border-rose-400/20'
-          : 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20'
-        }`}>
+        <span
+          className="text-[11px] font-semibold px-2 py-0.5 rounded border border-line"
+          style={p.difficulty === 'easy'
+            ? { color: 'var(--ok)', background: 'color-mix(in srgb, var(--ok) 12%, transparent)' }
+            : p.difficulty === 'hard'
+            ? { color: 'var(--err)', background: 'color-mix(in srgb, var(--err) 12%, transparent)' }
+            : { color: 'var(--warn)', background: 'color-mix(in srgb, var(--warn) 12%, transparent)' }}
+        >
           {p.difficulty?.charAt(0).toUpperCase() + p.difficulty?.slice(1)}
         </span>
         {p.topics && (
-          <span className="text-[11px] text-cyan-400 bg-cyan-400/10 border border-cyan-400/20 px-2 py-0.5 rounded">
+          <span className="text-[11px] border border-line px-2 py-0.5 rounded" style={{ color: 'var(--info)', background: 'color-mix(in srgb, var(--info) 12%, transparent)' }}>
             {p.topics}
           </span>
         )}
         {p.duration && (
-          <span className="text-[11px] text-blue-400 bg-blue-400/10 border border-blue-400/20 px-2 py-0.5 rounded flex items-center gap-1">
+          <span className="text-[11px] border border-line px-2 py-0.5 rounded flex items-center gap-1" style={{ color: 'var(--info)', background: 'color-mix(in srgb, var(--info) 12%, transparent)' }}>
             <Clock size={10} /> {p.duration} min
           </span>
         )}
       </div>
 
       <div>
-        <h2 className="text-base font-bold text-white mb-3">{p.title}</h2>
-        <p className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">{p.description}</p>
+        <h2 className="h3 mb-3">{p.title}</h2>
+        <p className="text-sm text-t2 whitespace-pre-wrap leading-relaxed">{p.description}</p>
       </div>
 
       {visibleTCs.length > 0 && (
         <div className="space-y-3">
           {visibleTCs.map((tc, i) => (
-            <div key={tc.id} className="rounded-lg border border-white/[0.08] bg-[#161b22] overflow-hidden">
-              <div className="px-3 py-1.5 text-[11px] font-semibold text-slate-400 border-b border-white/[0.06]">
+            <div key={tc.id} className="rounded-lg border border-line surface-inset overflow-hidden">
+              <div className="px-3 py-1.5 text-[11px] font-semibold text-t3 border-b border-line">
                 Sample {i + 1}:
               </div>
-              <div className="grid grid-cols-2 divide-x divide-white/[0.06]">
+              <div className="grid grid-cols-2 divide-x divide-[var(--b)]">
                 <div className="p-3">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] text-slate-500 font-medium">Input</span>
-                    <button onClick={() => copyText(tc.input_data || '')} className="text-slate-600 hover:text-slate-400 transition-colors">
+                    <span className="text-[11px] text-t4 font-medium">Input</span>
+                    <button onClick={() => copyText(tc.input_data || '')} className="text-t4 hover:text-t3 transition-colors">
                       <Copy size={11} />
                     </button>
                   </div>
-                  <pre className="text-sm text-slate-200 font-mono leading-relaxed">{tc.input_data || '(none)'}</pre>
+                  <pre className="text-sm text-t2 font-mono leading-relaxed">{tc.input_data || '(none)'}</pre>
                 </div>
                 <div className="p-3">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] text-slate-500 font-medium">Output</span>
-                    <button onClick={() => copyText(tc.expected_output)} className="text-slate-600 hover:text-slate-400 transition-colors">
+                    <span className="text-[11px] text-t4 font-medium">Output</span>
+                    <button onClick={() => copyText(tc.expected_output)} className="text-t4 hover:text-t3 transition-colors">
                       <Copy size={11} />
                     </button>
                   </div>
-                  <pre className="text-sm text-slate-200 font-mono leading-relaxed">{tc.expected_output}</pre>
+                  <pre className="text-sm text-t2 font-mono leading-relaxed">{tc.expected_output}</pre>
                 </div>
               </div>
             </div>
@@ -576,30 +587,32 @@ function ProblemStatement({ problem: p, liked, setLiked }) {
         </div>
       )}
 
-      <div className="rounded-lg bg-[#161b22] border border-white/[0.06] p-3 text-xs text-slate-400 space-y-1">
-        <p>• Write your solution in C using <code className="text-blue-400">printf</code> / <code className="text-blue-400">scanf</code></p>
+      <div className="rounded-lg surface-inset border border-line p-3 text-xs text-t3 space-y-1">
+        <p>• Write your solution in C using <code className="text-brand">printf</code> / <code className="text-brand">scanf</code></p>
         <p>• Time limit: 5 seconds per test case</p>
         {p.test_cases_count > 0 && <p>• {p.test_cases_count} total test cases (some may be hidden)</p>}
       </div>
 
-      <div className="flex items-center justify-between pt-1 border-t border-white/[0.06]">
-        <span className="text-xs text-slate-500">Did you like the problem?</span>
+      <div className="flex items-center justify-between pt-1 border-t border-line">
+        <span className="text-xs text-t4">Did you like the problem?</span>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setLiked(liked === 'up' ? null : 'up')}
-            className={`p-1.5 rounded transition-colors ${liked === 'up' ? 'text-emerald-400 bg-emerald-400/10' : 'text-slate-500 hover:text-slate-300'}`}
+            className={`p-1.5 rounded transition-colors ${liked === 'up' ? '' : 'text-t4 hover:text-t2'}`}
+            style={liked === 'up' ? { color: 'var(--ok)', background: 'color-mix(in srgb, var(--ok) 12%, transparent)' } : undefined}
           >
             <ThumbsUp size={14} />
           </button>
           <button
             onClick={() => setLiked(liked === 'down' ? null : 'down')}
-            className={`p-1.5 rounded transition-colors ${liked === 'down' ? 'text-rose-400 bg-rose-400/10' : 'text-slate-500 hover:text-slate-300'}`}
+            className={`p-1.5 rounded transition-colors ${liked === 'down' ? '' : 'text-t4 hover:text-t2'}`}
+            style={liked === 'down' ? { color: 'var(--err)', background: 'color-mix(in srgb, var(--err) 12%, transparent)' } : undefined}
           >
             <ThumbsDown size={14} />
           </button>
           <button
             onClick={() => toast('Comments coming soon!')}
-            className="p-1.5 rounded text-slate-500 hover:text-slate-300 transition-colors"
+            className="p-1.5 rounded text-t4 hover:text-t2 transition-colors"
           >
             <MessageSquare size={14} />
           </button>
@@ -615,25 +628,25 @@ function AiHelpPanel({ messages, question, setQuestion, onSend, loading }) {
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      <div className="px-4 py-3 border-b border-white/[0.06] flex items-center gap-2 flex-shrink-0">
-        <Sparkles size={15} className="text-blue-400" />
+      <div className="px-4 py-3 border-b border-line flex items-center gap-2 flex-shrink-0">
+        <Sparkles size={15} className="text-brand" />
         <div>
-          <p className="text-sm font-semibold text-white">AI Tutor</p>
-          <p className="text-[11px] text-slate-500">Ask questions about this problem</p>
+          <p className="text-sm font-semibold text-t">AI Tutor</p>
+          <p className="text-[11px] text-t4">Ask questions about this problem</p>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {messages.length === 0 && (
           <div className="text-center py-8 space-y-2">
-            <Sparkles size={28} className="text-blue-400/40 mx-auto" />
-            <p className="text-sm text-slate-500">Need a hint? Ask the AI tutor!</p>
+            <Sparkles size={28} className="text-brand/40 mx-auto" />
+            <p className="text-sm text-t4">Need a hint? Ask the AI tutor!</p>
             <div className="flex flex-col gap-1.5 mt-3">
               {['Give me a hint for this problem', 'What data structure should I use?', 'Explain the approach step by step'].map(q => (
                 <button
                   key={q}
                   onClick={() => setQuestion(q)}
-                  className="text-xs text-blue-400/70 hover:text-blue-400 border border-blue-400/20 hover:border-blue-400/40 rounded px-3 py-1.5 transition-colors text-left"
+                  className="text-xs text-brand hover:opacity-80 border border-line hover:border-line-strong rounded px-3 py-1.5 transition-colors text-left"
                 >
                   {q}
                 </button>
@@ -643,15 +656,18 @@ function AiHelpPanel({ messages, question, setQuestion, onSend, loading }) {
         )}
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
-              m.role === 'user'
-                ? 'bg-blue-600 text-white rounded-br-sm'
-                : 'bg-[#1e2530] text-slate-200 border border-white/[0.06] rounded-bl-sm'
-            }`}>
+            <div
+              className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
+                m.role === 'user'
+                  ? 'text-white rounded-br-sm'
+                  : 'surface-inset text-t2 border border-line rounded-bl-sm'
+              }`}
+              style={m.role === 'user' ? { background: 'var(--brand-solid)' } : undefined}
+            >
               {m.role === 'ai' && (
                 <div className="flex items-center gap-1 mb-1">
-                  <Sparkles size={11} className="text-blue-400" />
-                  <span className="text-[10px] text-blue-400 font-semibold">AI Tutor</span>
+                  <Sparkles size={11} className="text-brand" />
+                  <span className="text-[10px] text-brand font-semibold">AI Tutor</span>
                 </div>
               )}
               {m.text}
@@ -660,11 +676,11 @@ function AiHelpPanel({ messages, question, setQuestion, onSend, loading }) {
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-[#1e2530] border border-white/[0.06] rounded-xl rounded-bl-sm px-3 py-2">
+            <div className="surface-inset border border-line rounded-xl rounded-bl-sm px-3 py-2">
               <div className="flex gap-1 items-center">
-                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:0ms]" />
-                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:150ms]" />
-                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:300ms]" />
+                <span className="w-1.5 h-1.5 rounded-full animate-bounce [animation-delay:0ms]" style={{ background: 'var(--brand)' }} />
+                <span className="w-1.5 h-1.5 rounded-full animate-bounce [animation-delay:150ms]" style={{ background: 'var(--brand)' }} />
+                <span className="w-1.5 h-1.5 rounded-full animate-bounce [animation-delay:300ms]" style={{ background: 'var(--brand)' }} />
               </div>
             </div>
           </div>
@@ -672,19 +688,19 @@ function AiHelpPanel({ messages, question, setQuestion, onSend, loading }) {
         <div ref={bottomRef} />
       </div>
 
-      <div className="px-3 pb-3 border-t border-white/[0.06] pt-2 flex-shrink-0">
+      <div className="px-3 pb-3 border-t border-line pt-2 flex-shrink-0">
         <div className="flex gap-2">
           <input
             value={question}
             onChange={e => setQuestion(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend() } }}
             placeholder="Ask a question about this problem..."
-            className="flex-1 bg-[#0d1117] border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-300 placeholder-slate-600 focus:outline-none focus:border-blue-500/50"
+            className="flex-1 surface-inset border border-line rounded-lg px-3 py-2 text-sm text-t2 placeholder-t4 focus:outline-none focus:border-line-strong"
           />
           <button
             onClick={onSend}
             disabled={loading || !question.trim()}
-            className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="btn-primary px-3 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Send size={14} />
           </button>
@@ -698,45 +714,55 @@ function SubmissionResult({ result }) {
   const pct = result.total ? Math.round((result.passed / result.total) * 100) : 0
   return (
     <div className="space-y-4">
-      <div className={`rounded-xl border p-4 ${
-        result.status === 'Accepted' ? 'border-emerald-500/30 bg-emerald-500/[0.08]' : 'border-rose-500/30 bg-rose-500/[0.08]'
-      }`}>
+      <div
+        className="rounded-xl border p-4"
+        style={result.status === 'Accepted'
+          ? { borderColor: 'color-mix(in srgb, var(--ok) 30%, transparent)', background: 'color-mix(in srgb, var(--ok) 8%, transparent)' }
+          : { borderColor: 'color-mix(in srgb, var(--err) 30%, transparent)', background: 'color-mix(in srgb, var(--err) 8%, transparent)' }}
+      >
         <div className="flex items-center gap-2 mb-1">
           {result.status === 'Accepted'
-            ? <CheckCircle size={18} className="text-emerald-400" />
-            : <XCircle    size={18} className="text-rose-400" />}
-          <span className={`font-bold text-base ${result.status === 'Accepted' ? 'text-emerald-400' : 'text-rose-400'}`}>
+            ? <CheckCircle size={18} style={{ color: 'var(--ok)' }} />
+            : <XCircle    size={18} style={{ color: 'var(--err)' }} />}
+          <span className="font-bold text-base" style={{ color: result.status === 'Accepted' ? 'var(--ok)' : 'var(--err)' }}>
             {result.status}
           </span>
         </div>
-        <p className="text-xs text-slate-400">{result.passed}/{result.total} test cases passed · Score: {result.score}%</p>
+        <p className="text-xs text-t3 tabular">{result.passed}/{result.total} test cases passed · Score: {result.score}%</p>
       </div>
       <div>
-        <div className="flex justify-between text-xs text-slate-400 mb-1.5"><span>Test Cases</span><span>{pct}%</span></div>
-        <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+        <div className="flex justify-between text-xs text-t3 mb-1.5 tabular"><span>Test Cases</span><span>{pct}%</span></div>
+        <div className="h-1.5 rounded-full surface-inset overflow-hidden">
           <div className="h-full rounded-full transition-all duration-700" style={{
             width: `${pct}%`,
-            background: pct === 100 ? '#10b981' : pct > 50 ? '#f59e0b' : '#f43f5e',
+            background: pct === 100 ? 'var(--ok)' : pct > 50 ? 'var(--warn)' : 'var(--err)',
           }} />
         </div>
       </div>
       {result.error && (
-        <pre className="text-xs text-rose-400 font-mono bg-rose-500/5 border border-rose-500/20 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">
+        <pre
+          className="text-xs font-mono border rounded-lg p-3 overflow-x-auto whitespace-pre-wrap"
+          style={{ color: 'var(--err)', background: 'color-mix(in srgb, var(--err) 5%, transparent)', borderColor: 'color-mix(in srgb, var(--err) 20%, transparent)' }}
+        >
           {result.error}
         </pre>
       )}
       <div className="space-y-1.5">
         {result.results?.map((r, i) => (
-          <div key={i} className={`flex items-center gap-3 rounded-lg p-2.5 border ${
-            r.status === 'Passed' ? 'border-emerald-500/15 bg-emerald-500/5' : 'border-rose-500/15 bg-rose-500/5'
-          }`}>
+          <div
+            key={i}
+            className="flex items-center gap-3 rounded-lg p-2.5 border"
+            style={r.status === 'Passed'
+              ? { borderColor: 'color-mix(in srgb, var(--ok) 15%, transparent)', background: 'color-mix(in srgb, var(--ok) 5%, transparent)' }
+              : { borderColor: 'color-mix(in srgb, var(--err) 15%, transparent)', background: 'color-mix(in srgb, var(--err) 5%, transparent)' }}
+          >
             {r.status === 'Passed'
-              ? <CheckCircle size={13} className="text-emerald-400 flex-shrink-0" />
-              : <XCircle    size={13} className="text-rose-400 flex-shrink-0" />}
-            <span className="text-xs text-slate-400">Case #{i + 1}{r.is_hidden ? ' (hidden)' : ''}</span>
+              ? <CheckCircle size={13} className="flex-shrink-0" style={{ color: 'var(--ok)' }} />
+              : <XCircle    size={13} className="flex-shrink-0" style={{ color: 'var(--err)' }} />}
+            <span className="text-xs text-t3 tabular">Case #{i + 1}{r.is_hidden ? ' (hidden)' : ''}</span>
             <StatusBadge status={r.status} />
             {r.execution_time != null && (
-              <span className="text-xs text-slate-500 ml-auto">{r.execution_time.toFixed(1)}ms</span>
+              <span className="text-xs text-t4 ml-auto tabular">{r.execution_time.toFixed(1)}ms</span>
             )}
           </div>
         ))}
@@ -810,36 +836,37 @@ function VisualizeModal({ code: initialCode, onClose }) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-[92vw] max-w-7xl h-[88vh] bg-[#0d1117] border border-white/10 rounded-2xl flex flex-col shadow-2xl overflow-hidden">
+      <div className="w-[92vw] max-w-7xl h-[88vh] bg-beige-pg border border-line rounded-2xl flex flex-col shadow-2xl overflow-hidden">
 
         {/* Modal header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-white/[0.07] bg-[#161b22] flex-shrink-0">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-line bg-surface-h flex-shrink-0">
           <div className="flex items-center gap-2">
-            <Eye size={16} className="text-blue-400" />
-            <span className="font-semibold text-white text-sm">Code Visualizer</span>
-            <span className="text-[11px] text-slate-500 border border-white/10 px-2 py-0.5 rounded">C Language</span>
+            <Eye size={16} className="text-brand" />
+            <span className="font-semibold text-t text-sm">Code Visualizer</span>
+            <span className="text-[11px] text-t4 border border-line px-2 py-0.5 rounded">C Language</span>
           </div>
           <div className="flex items-center gap-3">
             {output && (
-              <span className={`text-[11px] px-2 py-0.5 rounded border font-medium ${
-                isSuccess
-                  ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20'
-                  : 'text-rose-400 bg-rose-400/10 border-rose-400/20'
-              }`}>
+              <span
+                className="text-[11px] px-2 py-0.5 rounded border border-line font-medium tabular"
+                style={isSuccess
+                  ? { color: 'var(--ok)', background: 'color-mix(in srgb, var(--ok) 12%, transparent)' }
+                  : { color: 'var(--err)', background: 'color-mix(in srgb, var(--err) 12%, transparent)' }}
+              >
                 {isSuccess ? `Executed in ${output.time_ms?.toFixed(1)}ms` : output.status}
               </span>
             )}
             <button
               onClick={handleRun}
               disabled={running}
-              className="flex items-center gap-1.5 text-xs text-white bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg transition-colors font-medium disabled:opacity-50"
+              className="btn-primary btn-sm rounded-lg disabled:opacity-50"
             >
               {running
                 ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 : <Play size={12} fill="currentColor" />}
               {running ? 'Running…' : 'Run'}
             </button>
-            <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors p-1 rounded hover:bg-white/[0.06]">
+            <button onClick={onClose} className="text-t3 hover:text-t transition-colors p-1 rounded hover:bg-surface-h">
               <X size={18} />
             </button>
           </div>
@@ -849,29 +876,36 @@ function VisualizeModal({ code: initialCode, onClose }) {
         <div className="flex flex-1 overflow-hidden">
 
           {/* Code pane */}
-          <div className="w-[55%] border-r border-white/[0.07] overflow-auto bg-[#0d1117]">
+          <div className="w-[55%] border-r border-line overflow-auto bg-beige-pg">
             <div className="min-h-full py-3">
               {lines.map((line, i) => {
                 const isActive = activeCodeLine === i
                 return (
-                  <div key={i} className={`flex items-stretch group transition-colors duration-100 ${
-                    isActive ? 'bg-blue-500/[0.12] border-l-2 border-blue-400' : 'border-l-2 border-transparent'
-                  }`}>
-                    <span className={`select-none text-right pr-4 pl-4 min-w-[3.5rem] text-[11px] leading-6 flex-shrink-0 font-mono ${
-                      isActive ? 'text-blue-400 font-bold' : 'text-slate-600'
-                    }`}>
+                  <div
+                    key={i}
+                    className={`flex items-stretch group transition-colors duration-100 border-l-2 ${
+                      isActive ? '' : 'border-transparent'
+                    }`}
+                    style={isActive ? { background: 'var(--brandGhost)', borderColor: 'var(--brand)' } : undefined}
+                  >
+                    <span
+                      className={`select-none text-right pr-4 pl-4 min-w-[3.5rem] text-[11px] leading-6 flex-shrink-0 font-mono ${
+                        isActive ? 'font-bold' : 'text-t4'
+                      }`}
+                      style={isActive ? { color: 'var(--brand)' } : undefined}
+                    >
                       {i + 1}
                     </span>
                     <pre className={`leading-6 whitespace-pre flex-1 font-mono text-sm pr-6 ${
-                      isActive ? 'text-white' : 'text-slate-300'
+                      isActive ? 'text-t' : 'text-t2'
                     }`}>
                       {line || ' '}
                     </pre>
                     {isActive && running && (
                       <span className="mr-3 flex items-center flex-shrink-0 gap-0.5">
-                        <span className="w-1 h-1 bg-blue-400 rounded-full animate-bounce [animation-delay:0ms]" />
-                        <span className="w-1 h-1 bg-blue-400 rounded-full animate-bounce [animation-delay:100ms]" />
-                        <span className="w-1 h-1 bg-blue-400 rounded-full animate-bounce [animation-delay:200ms]" />
+                        <span className="w-1 h-1 rounded-full animate-bounce [animation-delay:0ms]" style={{ background: 'var(--brand)' }} />
+                        <span className="w-1 h-1 rounded-full animate-bounce [animation-delay:100ms]" style={{ background: 'var(--brand)' }} />
+                        <span className="w-1 h-1 rounded-full animate-bounce [animation-delay:200ms]" style={{ background: 'var(--brand)' }} />
                       </span>
                     )}
                   </div>
@@ -881,35 +915,35 @@ function VisualizeModal({ code: initialCode, onClose }) {
           </div>
 
           {/* I/O pane */}
-          <div className="w-[45%] flex flex-col overflow-hidden bg-[#0a0e18]">
+          <div className="w-[45%] flex flex-col overflow-hidden bg-beige-pg">
 
             {/* stdin */}
-            <div className="flex-shrink-0 border-b border-white/[0.07]">
-              <div className="px-4 py-2 bg-[#161b22] flex items-center gap-2">
-                <Terminal size={12} className="text-slate-500" />
-                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">stdin (input)</span>
+            <div className="flex-shrink-0 border-b border-line">
+              <div className="px-4 py-2 bg-surface-h flex items-center gap-2">
+                <Terminal size={12} className="text-t4" />
+                <span className="text-[11px] font-semibold text-t3 uppercase tracking-wide">stdin (input)</span>
               </div>
               <textarea
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 placeholder="Enter program input here (optional)…"
-                className="w-full h-24 bg-[#0a0e18] px-4 py-3 text-sm text-slate-300 font-mono resize-none focus:outline-none placeholder-slate-700 border-0"
+                className="w-full h-24 bg-beige-pg px-4 py-3 text-sm text-t2 font-mono resize-none focus:outline-none placeholder-t4 border-0"
               />
             </div>
 
             {/* stdout */}
             <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="px-4 py-2 bg-[#161b22] border-b border-white/[0.07] flex items-center justify-between flex-shrink-0">
+              <div className="px-4 py-2 bg-surface-h border-b border-line flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-2">
-                  <Terminal size={12} className={isError ? 'text-rose-400' : 'text-emerald-400'} />
-                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                  <Terminal size={12} style={{ color: isError ? 'var(--err)' : 'var(--ok)' }} />
+                  <span className="text-[11px] font-semibold text-t3 uppercase tracking-wide">
                     {isError ? 'Error / stderr' : 'stdout (output)'}
                   </span>
                 </div>
                 {output?.output && (
                   <button
                     onClick={() => navigator.clipboard.writeText(output.output)}
-                    className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-300 transition-colors"
+                    className="flex items-center gap-1 text-[11px] text-t4 hover:text-t3 transition-colors"
                   >
                     <Copy size={10} /> Copy
                   </button>
@@ -919,8 +953,8 @@ function VisualizeModal({ code: initialCode, onClose }) {
               <div ref={outputRef} className="flex-1 overflow-auto px-4 py-3">
                 {!output && !running && (
                   <div className="h-full flex flex-col items-center justify-center text-center space-y-3 opacity-40">
-                    <Play size={28} className="text-slate-600" />
-                    <p className="text-sm text-slate-600">Click <span className="text-slate-400 font-semibold">Run</span> to execute your code</p>
+                    <Play size={28} className="text-t4" />
+                    <p className="text-sm text-t4">Click <span className="text-t3 font-semibold">Run</span> to execute your code</p>
                   </div>
                 )}
                 {running && !output && (
@@ -928,35 +962,36 @@ function VisualizeModal({ code: initialCode, onClose }) {
                     <div className="text-center space-y-3">
                       <div className="flex gap-1.5 justify-center">
                         {[0, 150, 300].map(d => (
-                          <span key={d} className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                          <span key={d} className="w-2 h-2 rounded-full animate-bounce" style={{ background: 'var(--brand)', animationDelay: `${d}ms` }} />
                         ))}
                       </div>
-                      <p className="text-xs text-slate-500">Compiling &amp; running…</p>
+                      <p className="text-xs text-t4">Compiling &amp; running…</p>
                     </div>
                   </div>
                 )}
                 {output && (
-                  <pre className={`font-mono text-sm leading-relaxed whitespace-pre-wrap break-words ${
-                    isError ? 'text-rose-400' : 'text-emerald-300'
-                  }`}>
+                  <pre
+                    className="font-mono text-sm leading-relaxed whitespace-pre-wrap break-words"
+                    style={{ color: isError ? 'var(--err)' : 'var(--ok)' }}
+                  >
                     {displayedOutput || output.output || '(no output)'}
                     {isSuccess && displayedOutput === output.output && (
-                      <span className="animate-pulse text-emerald-500">▋</span>
+                      <span className="animate-pulse" style={{ color: 'var(--ok)' }}>▋</span>
                     )}
                   </pre>
                 )}
               </div>
 
               {output && (
-                <div className="flex-shrink-0 border-t border-white/[0.07] px-4 py-2 bg-[#161b22] flex items-center gap-4 text-[11px] text-slate-500">
-                  <span className={`font-semibold ${isSuccess ? 'text-emerald-400' : 'text-rose-400'}`}>
+                <div className="flex-shrink-0 border-t border-line px-4 py-2 bg-surface-h flex items-center gap-4 text-[11px] text-t4">
+                  <span className="font-semibold" style={{ color: isSuccess ? 'var(--ok)' : 'var(--err)' }}>
                     {isSuccess ? '✓ Execution successful' : '✗ ' + output.status}
                   </span>
                   {output.time_ms != null && (
-                    <span>Time: <span className="text-slate-400">{output.time_ms.toFixed(2)}ms</span></span>
+                    <span className="tabular">Time: <span className="text-t3">{output.time_ms.toFixed(2)}ms</span></span>
                   )}
                   {isSuccess && (
-                    <span>Output lines: <span className="text-slate-400">{(output.output || '').split('\n').filter(Boolean).length}</span></span>
+                    <span className="tabular">Output lines: <span className="text-t3">{(output.output || '').split('\n').filter(Boolean).length}</span></span>
                   )}
                 </div>
               )}

@@ -129,11 +129,11 @@ function ProblemForm({ initial, onSave, onCancel, isTest = false }) {
           <div>
             <label className="label">Assign To</label>
             <div className="flex gap-3 mb-2">
-              <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-300">
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-t2">
                 <input type="radio" className="accent-primary" checked={form.is_for_all} onChange={() => setForm({ ...form, is_for_all: true })} />
                 All Students
               </label>
-              <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-300">
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-t2">
                 <input type="radio" className="accent-primary" checked={!form.is_for_all} onChange={() => setForm({ ...form, is_for_all: false })} />
                 Specific Students
               </label>
@@ -155,9 +155,9 @@ function ProblemForm({ initial, onSave, onCancel, isTest = false }) {
                   ['f12_disable',         'Disable F12 / DevTools'],
                   ['fullscreen_required', 'Require Full Screen'],
                 ].map(([key, label]) => (
-                  <label key={key} className="flex items-center gap-2.5 p-2.5 rounded-lg border border-[rgba(255,255,255,0.06)] cursor-pointer hover:border-primary/30 transition-colors">
+                  <label key={key} className="flex items-center gap-2.5 p-2.5 rounded-lg border border-line cursor-pointer hover:border-line-strong transition-colors">
                     <input type="checkbox" className="accent-primary" checked={form[key]} onChange={set(key)} />
-                    <span className="text-sm text-slate-300">{label}</span>
+                    <span className="text-sm text-t2">{label}</span>
                   </label>
                 ))}
               </div>
@@ -174,10 +174,10 @@ function ProblemForm({ initial, onSave, onCancel, isTest = false }) {
       {step === 2 && (
         <div className="space-y-4">
           {/* AI Generator */}
-          <div className="rounded-lg border border-violet/20 bg-violet/5 p-4">
+          <div className="rounded-lg border border-line p-4" style={{ background: 'var(--brandGhost)' }}>
             <div className="flex items-center gap-2 mb-3">
-              <Wand2 size={16} className="text-violet-400" />
-              <span className="text-sm font-semibold text-violet-300">AI Question Generator</span>
+              <Wand2 size={16} style={{ color: 'var(--d-purple)' }} />
+              <span className="text-sm font-semibold" style={{ color: 'var(--d-purple)' }}>AI Question Generator</span>
             </div>
             <div className="grid grid-cols-2 gap-3 mb-3">
               <input className="input" placeholder="Topic (e.g. arrays, pointers)"
@@ -202,24 +202,24 @@ function ProblemForm({ initial, onSave, onCancel, isTest = false }) {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="label !mb-0">Test Cases</label>
-              <button type="button" onClick={addTc} className="btn-ghost text-xs">
+              <button type="button" onClick={addTc} className="btn-ghost btn-sm">
                 <Plus size={13} /> Add Test Case
               </button>
             </div>
             <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
               {form.test_cases.map((tc, i) => (
-                <div key={i} className="rounded-lg border border-[rgba(255,255,255,0.06)] p-3 space-y-2">
+                <div key={i} className="rounded-lg border border-line p-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-400">Case #{i + 1}</span>
+                    <span className="text-xs font-semibold text-t3 tabular">Case #{i + 1}</span>
                     <div className="flex items-center gap-3">
-                      <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
+                      <label className="flex items-center gap-1.5 text-xs text-t3 cursor-pointer">
                         <input type="checkbox" className="accent-primary" checked={tc.is_hidden}
                           onChange={(e) => setTc(i, 'is_hidden', e.target.checked)} />
                         Hidden
                       </label>
                       {form.test_cases.length > 1 && (
                         <button type="button" onClick={() => removeTc(i)}
-                          className="text-rose-400 hover:text-rose transition-colors">
+                          className="transition-colors" style={{ color: 'var(--err)' }}>
                           <Trash2 size={13} />
                         </button>
                       )}
@@ -301,8 +301,8 @@ export default function PracticeMode() {
     <div className="space-y-5 animate-fade-in">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-white">Practice Mode</h1>
-          <p className="text-slate-400 text-sm mt-0.5">Create and manage practice problems</p>
+          <h1 className="h1">Practice Mode</h1>
+          <p className="section-sub mt-0.5">Create and manage practice problems</p>
         </div>
         <button onClick={() => setShowModal(true)} className="btn-primary">
           <Plus size={16} /> Create Problem
@@ -310,15 +310,15 @@ export default function PracticeMode() {
       </div>
 
       <div className="relative max-w-xs">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-t4" />
         <input className="input pl-8" placeholder="Search problems…" value={search}
           onChange={(e) => setSearch(e.target.value)} />
       </div>
 
       {filtered.length === 0 ? (
         <div className="card text-center py-16">
-          <Code2 size={40} className="mx-auto text-slate-600 mb-3" />
-          <p className="text-slate-400">No practice problems yet.</p>
+          <Code2 size={40} className="mx-auto text-t4 mb-3" />
+          <p className="text-t3">No practice problems yet.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -343,18 +343,18 @@ function ProblemCard({ problem: p, onDelete }) {
   return (
     <div className="card-hover">
       <div className="flex items-start justify-between mb-2">
-        <h3 className="font-semibold text-white text-sm leading-snug line-clamp-2 flex-1 pr-2">{p.title}</h3>
-        <button onClick={() => onDelete(p.id)} className="btn-ghost text-rose-400 hover:text-rose p-1 flex-shrink-0">
+        <h3 className="h3 text-sm leading-snug line-clamp-2 flex-1 pr-2">{p.title}</h3>
+        <button onClick={() => onDelete(p.id)} className="btn-ghost p-1 flex-shrink-0" style={{ color: 'var(--err)' }}>
           <Trash2 size={14} />
         </button>
       </div>
-      {p.topics && <p className="text-xs text-slate-500 mb-2">{p.topics}</p>}
+      {p.topics && <p className="text-xs text-t4 mb-2">{p.topics}</p>}
       <div className="flex items-center gap-2 flex-wrap mb-3">
         <DifficultyBadge level={p.difficulty} />
-        <span className="badge-blue badge">{p.test_cases_count} test cases</span>
+        <span className="badge-blue badge tabular">{p.test_cases_count} test cases</span>
         {p.is_for_all ? <span className="badge-green badge">All</span> : <span className="badge-violet badge">Assigned</span>}
       </div>
-      <p className="text-xs text-slate-500 line-clamp-2">{p.description}</p>
+      <p className="text-xs text-t4 line-clamp-2">{p.description}</p>
     </div>
   )
 }
