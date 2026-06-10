@@ -6,7 +6,10 @@ import os
 import subprocess
 import tempfile
 import time
+import logging
 from typing import Dict, List
+
+logger = logging.getLogger(__name__)
 
 # On Windows, ensure MinGW/UCRT64 gcc is findable if not already in PATH
 _GCC_HINTS = [
@@ -46,13 +49,15 @@ def compile_code(src: str, tmpdir: str) -> tuple[str, str]:
             text=True,
             timeout=15,
         )
-    except FileNotFoundError:
+    except FileNotFoundError as e:
+        logger.error(f"Compiler execution error (gcc not found): {e}")
         return "", (
             "gcc not found.\n"
             "Please install MinGW-w64 and make sure gcc.exe is in your PATH.\n"
             "Download from: https://winlibs.com/ or https://www.mingw-w64.org/"
         )
     if result.returncode != 0:
+        logger.error(f"Compilation failed with returncode {result.returncode}:\n{result.stderr}")
         return "", result.stderr
     return exe, ""
 
@@ -70,6 +75,7 @@ def run_once(exe: str, input_data: str, time_limit: float = 5.0) -> Dict:
         )
         elapsed = (time.monotonic() - start) * 1000  # ms
         if proc.returncode != 0:
+            logger.error(f"Runtime execution error for {exe} (returncode {proc.returncode}):\n{proc.stderr}")
             return {
                 "status": "Runtime Error",
                 "output": proc.stderr[:500],
@@ -80,7 +86,8 @@ def run_once(exe: str, input_data: str, time_limit: float = 5.0) -> Dict:
             "output": _normalize(proc.stdout),
             "time_ms": elapsed,
         }
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
+        logger.error(f"Execution timeout for {exe} after {time_limit}s")
         return {
             "status": "Time Limit Exceeded",
             "output": "",
