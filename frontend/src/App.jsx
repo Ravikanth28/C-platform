@@ -10,6 +10,8 @@ import AdminNotes      from './pages/admin/Notes'
 import AdminPractice   from './pages/admin/PracticeMode'
 import AdminTest       from './pages/admin/TestMode'
 import AdminReports    from './pages/admin/Reports'
+import Classroom       from './pages/Classroom'
+import Analytics       from './pages/Analytics'
 
 import StudentDashboard from './pages/student/Dashboard'
 import StudentNotes     from './pages/student/Notes'
@@ -43,6 +45,8 @@ export default function App() {
         <Route path="notes"     element={<AdminNotes />} />
         <Route path="practice"  element={<AdminPractice />} />
         <Route path="tests"     element={<AdminTest />} />
+        <Route path="classroom" element={<Classroom />} />
+        <Route path="analytics" element={<Analytics />} />
         <Route path="reports"   element={<AdminReports />} />
       </Route>
 
@@ -53,6 +57,8 @@ export default function App() {
         <Route path="notes"     element={<StudentNotes />} />
         <Route path="practice"  element={<StudentPractice />} />
         <Route path="tests"     element={<StudentTest />} />
+        <Route path="classroom" element={<Classroom />} />
+        <Route path="analytics" element={<Analytics />} />
         <Route path="reports"   element={<StudentReports />} />
       </Route>
 

@@ -205,3 +205,61 @@ class SubmissionResult(Base):
     execution_time = Column(Float)        # ms
 
     submission = relationship("Submission", back_populates="results")
+
+
+# ──────────────────────────── Classroom ────────────────────────────────────
+
+class Class(Base):
+    __tablename__ = "classes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(120), nullable=False)
+    description = Column(Text)
+    created_by = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    members = relationship(
+        "ClassMember", back_populates="klass", cascade="all, delete-orphan"
+    )
+    assignments = relationship(
+        "Assignment", back_populates="klass", cascade="all, delete-orphan"
+    )
+
+
+class ClassMember(Base):
+    __tablename__ = "class_members"
+
+    id = Column(Integer, primary_key=True, index=True)
+    class_id = Column(Integer, ForeignKey("classes.id", ondelete="CASCADE"))
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+
+    klass = relationship("Class", back_populates="members")
+    user = relationship("User")
+
+
+class Assignment(Base):
+    __tablename__ = "assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(200), nullable=False)
+    instructions = Column(Text)
+    class_id = Column(Integer, ForeignKey("classes.id", ondelete="CASCADE"))
+    due_date = Column(DateTime)
+    created_by = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    klass = relationship("Class", back_populates="assignments")
+    problems = relationship(
+        "AssignmentProblem", back_populates="assignment", cascade="all, delete-orphan"
+    )
+
+
+class AssignmentProblem(Base):
+    __tablename__ = "assignment_problems"
+
+    id = Column(Integer, primary_key=True, index=True)
+    assignment_id = Column(Integer, ForeignKey("assignments.id", ondelete="CASCADE"))
+    problem_id = Column(Integer, ForeignKey("problems.id", ondelete="CASCADE"))
+
+    assignment = relationship("Assignment", back_populates="problems")
+    problem = relationship("Problem")

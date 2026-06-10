@@ -25,6 +25,19 @@ api.interceptors.response.use(
   }
 )
 
+// Download a file from an authenticated endpoint (sends the JWT, then saves the blob)
+export const downloadFile = async (url, filename) => {
+  const res = await api.get(url, { responseType: 'blob' })
+  const blobUrl = URL.createObjectURL(new Blob([res.data]))
+  const a = document.createElement('a')
+  a.href = blobUrl
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(blobUrl)
+}
+
 export const getFileUrl = (url) => {
   if (!url) return url
   if (url.startsWith('/uploads')) {

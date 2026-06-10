@@ -10,7 +10,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from database import Base, engine, SessionLocal
-from models import User, Problem, TestCase, Note
+from models import (
+    User, Problem, TestCase, Note,
+    Class, ClassMember, Assignment, AssignmentProblem,
+)
 from auth import get_password_hash
 import datetime
 
@@ -187,6 +190,45 @@ if db.query(Problem).filter(Problem.mode == "test").count() == 0:
     print("  [+] test: C Fundamentals Assessment")
 else:
     print("  [skip] test problems already seeded")
+
+print("\n── Seeding classroom ──────────────────────────────────────────────")
+if db.query(Class).count() == 0:
+    klass = Class(name="C Programming 101", description="Intro cohort — Fall", created_by=admin.id)
+    db.add(klass)
+    db.flush()
+    for s in (student1, student2, student3):
+        db.add(ClassMember(class_id=klass.id, user_id=s.id))
+
+    practice = db.query(Problem).filter(Problem.mode == "practice").order_by(Problem.id).all()
+    now = datetime.datetime.utcnow()
+    if practice:
+        a1 = Assignment(
+            title="Week 1 — Basics",
+            instructions="Warm up with output and arithmetic problems.",
+            class_id=klass.id,
+            due_date=now + datetime.timedelta(days=7),
+            created_by=admin.id,
+        )
+        db.add(a1)
+        db.flush()
+        for p in practice[:2]:
+            db.add(AssignmentProblem(assignment_id=a1.id, problem_id=p.id))
+
+        a2 = Assignment(
+            title="Week 2 — Loops & Strings",
+            instructions="Practice factorial and string reversal.",
+            class_id=klass.id,
+            due_date=now + datetime.timedelta(days=14),
+            created_by=admin.id,
+        )
+        db.add(a2)
+        db.flush()
+        for p in practice[2:4]:
+            db.add(AssignmentProblem(assignment_id=a2.id, problem_id=p.id))
+    db.commit()
+    print("  [+] class 'C Programming 101' with 3 students + 2 assignments")
+else:
+    print("  [skip] classroom already seeded")
 
 db.close()
 print("\n✓ Seed complete!\n")

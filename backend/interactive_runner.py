@@ -20,11 +20,19 @@ IS_WIN = os.name == "nt"
 class _PosixPty:
     def __init__(self, exe):
         import pty
+        from code_runner import _limit_preexec
+
+        limit = _limit_preexec()
+
+        def _pre():
+            os.setsid()
+            if limit:
+                limit()
 
         self.master, slave = pty.openpty()
         self.proc = subprocess.Popen(
             [exe], stdin=slave, stdout=slave, stderr=slave,
-            preexec_fn=os.setsid, close_fds=True,
+            preexec_fn=_pre, close_fds=True,
         )
         os.close(slave)
 

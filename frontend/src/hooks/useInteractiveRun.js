@@ -4,17 +4,31 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * Drives the CodeBlocks-style interactive console over a WebSocket.
  *
  * status: 'idle' | 'compiling' | 'running' | 'exited' | 'error'
- * output: the live program stream (program output + PTY-echoed input)
- *
- * The program runs under a pseudo-terminal on the backend, so typed input
- * is echoed by the terminal itself — we don't echo locally (avoids doubles).
+ * output: the live program stream (program output + echoed input)
  */
+
+// Build the WebSocket URL from the SAME base axios uses (VITE_API_URL),
+// so it works whether the frontend is same-origin with the backend or a
+// separate static site pointing at a remote API.
+function wsEndpoint() {
+  const apiBase = import.meta.env.VITE_API_URL || '/api'
+  if (/^https?:\/\//i.test(apiBase)) {
+    // absolute, e.g. https://my-api.onrender.com/api  ->  wss://my-api.onrender.com/api
+    return apiBase.replace(/^http/i, 'ws').replace(/\/$/, '') + '/submissions/run-interactive'
+  }
+  // relative, e.g. /api  ->  wss://<this-host>/api
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  const rel = apiBase.startsWith('/') ? apiBase : `/${apiBase}`
+  return `${proto}://${window.location.host}${rel}`.replace(/\/$/, '') + '/submissions/run-interactive'
+}
+
 export default function useInteractiveRun() {
   const [output, setOutput]   = useState('')
   const [status, setStatus]   = useState('idle')
   const [exitCode, setExitCode] = useState(null)
   const wsRef = useRef(null)
-  const modeRef = useRef('pty') // 'pty' echoes input itself; 'pipe' needs local echo
+  const modeRef = useRef('pty')      // 'pipe' has no terminal echo → echo locally
+  const startedRef = useRef(false)   // did we ever receive 'started'?
 
   const closeWs = () => {
     const ws = wsRef.current
@@ -29,17 +43,18 @@ export default function useInteractiveRun() {
     setOutput('')
     setExitCode(null)
     setStatus('compiling')
+    startedRef.current = false
 
     const token = localStorage.getItem('token') || ''
-    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const url = `${proto}://${window.location.host}/api/submissions/run-interactive?token=${encodeURIComponent(token)}`
+    const endpoint = wsEndpoint()
+    const url = `${endpoint}?token=${encodeURIComponent(token)}`
 
     let ws
     try {
       ws = new WebSocket(url)
-    } catch {
+    } catch (e) {
       setStatus('error')
-      setOutput('Could not open the interactive connection.')
+      setOutput(`Could not open the interactive connection.\n${endpoint}\n${e}`)
       return
     }
     wsRef.current = ws
@@ -51,6 +66,7 @@ export default function useInteractiveRun() {
       try { msg = JSON.parse(ev.data) } catch { return }
       switch (msg.type) {
         case 'started':
+          startedRef.current = true
           modeRef.current = msg.mode || 'pty'
           setStatus('running'); break
         case 'info':
@@ -70,18 +86,37 @@ export default function useInteractiveRun() {
     }
 
     ws.onerror = () => {
-      setStatus((s) => (s === 'compiling' || s === 'running' ? 'error' : s))
+      if (!startedRef.current) {
+        setOutput(
+          'Could not reach the interactive server (WebSocket failed).\n' +
+          `Tried: ${endpoint}\n\n` +
+          'On a hosted deploy this usually means one of:\n' +
+          '  • the frontend and backend are on different domains — build the\n' +
+          '    frontend with VITE_API_URL set to the backend URL ending in /api\n' +
+          '  • the host/proxy is not forwarding WebSocket upgrades\n' +
+          '  • the backend is not running or gcc is unavailable.'
+        )
+        setStatus('error')
+      }
     }
-    ws.onclose = () => {
-      setStatus((s) => (s === 'running' || s === 'compiling' ? 'exited' : s))
+    ws.onclose = (ev) => {
+      if (!startedRef.current) {
+        if (ev.code === 4401) {
+          setOutput('Authentication failed for the interactive run — try signing in again.')
+        } else if (status !== 'error') {
+          setOutput((o) => o || `Interactive connection closed before starting (code ${ev.code}).\nTried: ${endpoint}`)
+        }
+        setStatus((s) => (s === 'compiling' ? 'error' : s))
+      } else {
+        setStatus((s) => (s === 'running' ? 'exited' : s))
+      }
     }
-  }, [])
+  }, [status])
 
   const sendInput = useCallback((text) => {
     const ws = wsRef.current
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'stdin', data: text }))
-      // pipe fallback has no terminal echo — show what was typed ourselves
       if (modeRef.current === 'pipe') setOutput((o) => o + text)
     }
   }, [])

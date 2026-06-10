@@ -147,12 +147,23 @@ async def run_interactive(ws: WebSocket):
         if note:
             await ws.send_json({"type": "info", "data": note})
 
+        produced = {"n": 0}
+        MAX_STREAM = 256 * 1024  # cap live output so a runaway print can't flood the socket
+
         def reader():
             while not stop_flag.is_set():
                 chunk = session.read()
                 if chunk == "":
                     break
+                produced["n"] += len(chunk)
                 loop.call_soon_threadsafe(queue.put_nowait, ("out", chunk))
+                if produced["n"] > MAX_STREAM:
+                    loop.call_soon_threadsafe(queue.put_nowait, ("out", "\n[output limit reached — stopped]\n"))
+                    try:
+                        session.close()
+                    except Exception:
+                        pass
+                    break
             rc = session.wait_returncode()
             loop.call_soon_threadsafe(queue.put_nowait, ("exit", rc))
 

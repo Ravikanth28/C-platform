@@ -8,6 +8,41 @@ import tempfile
 import time
 from typing import Dict, List
 
+try:
+    import resource  # POSIX only (Linux/Render); absent on Windows
+except ImportError:
+    resource = None
+
+# Hard ceilings for any student program. Keeps a single submission from OOM-ing
+# or fork-bombing a small instance (e.g. Render free tier = 512 MB / shared CPU).
+_MEM_BYTES = 256 * 1024 * 1024   # 256 MB address space
+_CPU_SECS = 6                    # CPU seconds (idle waiting for input doesn't count)
+_FSIZE_BYTES = 16 * 1024 * 1024  # max file write
+_NPROC = 64                      # max processes/threads
+_MAX_OUTPUT = 64 * 1024          # bytes of captured stdout we keep
+
+
+def _limit_preexec():
+    """Return a preexec_fn applying rlimits, or None on Windows."""
+    if resource is None:
+        return None
+
+    def _apply():
+        for res, val in (
+            (resource.RLIMIT_AS, _MEM_BYTES),
+            (resource.RLIMIT_CPU, _CPU_SECS),
+            (resource.RLIMIT_FSIZE, _FSIZE_BYTES),
+            (getattr(resource, "RLIMIT_NPROC", None), _NPROC),
+        ):
+            if res is None:
+                continue
+            try:
+                resource.setrlimit(res, (val, val))
+            except Exception:
+                pass
+
+    return _apply
+
 # On Windows, ensure MinGW/UCRT64 gcc is findable if not already in PATH
 _GCC_HINTS = [
     r"C:\msys64\ucrt64\bin",
@@ -91,6 +126,7 @@ def run_once(exe: str, input_data: str, time_limit: float = 5.0) -> Dict:
             capture_output=True,
             text=True,
             timeout=time_limit,
+            preexec_fn=_limit_preexec(),
         )
         elapsed = (time.monotonic() - start) * 1000  # ms
         if proc.returncode != 0:
@@ -101,7 +137,7 @@ def run_once(exe: str, input_data: str, time_limit: float = 5.0) -> Dict:
             }
         return {
             "status": "ok",
-            "output": _normalize(proc.stdout),
+            "output": _normalize(proc.stdout)[:_MAX_OUTPUT],
             "time_ms": elapsed,
         }
     except subprocess.TimeoutExpired:

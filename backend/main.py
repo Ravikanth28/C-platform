@@ -6,7 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from database import Base, engine
-from routers import admin, ai_router, auth, notes, problems, reports, students, submissions
+from routers import (
+    admin, ai_router, analytics, auth, classroom, notes, problems, reports, students, submissions,
+)
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
@@ -52,6 +54,8 @@ app.include_router(submissions.router, prefix="/api/submissions", tags=["Submiss
 app.include_router(reports.router,     prefix="/api/reports",     tags=["Reports"])
 app.include_router(students.router,    prefix="/api/students",    tags=["Students"])
 app.include_router(ai_router.router,   prefix="/api/ai",          tags=["AI"])
+app.include_router(classroom.router,   prefix="/api/classroom",   tags=["Classroom"])
+app.include_router(analytics.router,   prefix="/api/analytics",   tags=["Analytics"])
 
 
 @app.get("/api/health")

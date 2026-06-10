@@ -1,17 +1,33 @@
 import { useEffect, useState } from 'react'
-import { Eye, CheckCircle, XCircle, Clock, Code2 } from 'lucide-react'
+import { Eye, CheckCircle, XCircle, Clock, Code2, Download, Award, Search } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import api from '../../api/client'
+import toast from 'react-hot-toast'
+import api, { downloadFile } from '../../api/client'
+import { useAuth } from '../../context/AuthContext'
 import Modal          from '../../components/ui/Modal'
+import CertificateModal from '../../components/ui/CertificateModal'
 import { PageLoader } from '../../components/ui/LoadingSpinner'
 import { StatusBadge, ModeBadge } from '../../components/ui/Badge'
 
 export default function StudentReports() {
+  const { user } = useAuth()
   const [rows, setRows]     = useState([])
   const [loading, setLoading] = useState(true)
   const [mode, setMode]     = useState('')
+  const [search, setSearch] = useState('')
+  const [status, setStatus] = useState('')
   const [detail, setDetail] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [showCert, setShowCert] = useState(false)
+
+  const statuses = [...new Set(rows.map(r => r.status))]
+  const filtered = rows.filter(r =>
+    r.problem_title.toLowerCase().includes(search.toLowerCase()) &&
+    (status === '' || r.status === status)
+  )
+  const accepted = rows.filter(r => r.status === 'Accepted')
+  const solvedCount = new Set(accepted.map(r => r.problem_title)).size
+  const avgScore = rows.length ? Math.round(rows.reduce((s, r) => s + r.score, 0) / rows.length) : 0
 
   const load = () => {
     setLoading(true)
@@ -32,16 +48,39 @@ export default function StudentReports() {
 
   return (
     <div className="space-y-5 animate-fade-in">
-      <div>
-        <h1 className="h1">My Reports</h1>
-        <p className="section-sub mt-0.5">Your submission history and results</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="h1">My Reports</h1>
+          <p className="section-sub mt-0.5">Your submission history and results</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            className="btn-secondary btn-sm"
+            onClick={() => downloadFile(`/reports/export${mode ? `?mode=${mode}` : ''}`, 'codeforge_transcript.xlsx').catch(() => toast.error('Export failed'))}
+          >
+            <Download size={13} /> Transcript (Excel)
+          </button>
+          <button className="btn-primary btn-sm" onClick={() => setShowCert(true)}>
+            <Award size={13} /> Certificate
+          </button>
+        </div>
       </div>
 
-      <div className="flex gap-2">
-        {[['All', ''], ['Practice', 'practice'], ['Tests', 'test']].map(([label, val]) => (
-          <button key={val} onClick={() => setMode(val)}
-            className={mode === val ? 'tab-active' : 'tab-inactive'}>{label}</button>
-        ))}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex gap-2">
+          {[['All', ''], ['Practice', 'practice'], ['Tests', 'test']].map(([label, val]) => (
+            <button key={val} onClick={() => setMode(val)}
+              className={mode === val ? 'tab-active' : 'tab-inactive'}>{label}</button>
+          ))}
+        </div>
+        <select className="input max-w-[170px]" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="">All statuses</option>
+          {statuses.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <div className="relative flex-1 min-w-0 max-w-xs ml-auto">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-t4" />
+          <input className="input pl-8" placeholder="Search problem…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
       </div>
 
       <div className="table-container">
@@ -61,10 +100,10 @@ export default function StudentReports() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={9} className="table-cell text-center py-12 text-t4">No submissions yet.</td></tr>
+              {filtered.length === 0 && (
+                <tr><td colSpan={9} className="table-cell text-center py-12 text-t4">No submissions found.</td></tr>
               )}
-              {rows.map((r, i) => (
+              {filtered.map((r, i) => (
                 <tr key={r.submission_id} className="table-row">
                   <td className="table-cell text-t4 tabular">{i + 1}</td>
                   <td className="table-cell text-t font-medium">{r.problem_title}</td>
@@ -98,6 +137,14 @@ export default function StudentReports() {
       <Modal open={!!detail} onClose={() => setDetail(null)} title="Submission Report" size="lg">
         {detailLoading || detail === 'loading' ? <PageLoader /> : detail && <ReportDetail report={detail} />}
       </Modal>
+
+      <CertificateModal
+        open={showCert}
+        onClose={() => setShowCert(false)}
+        name={user?.full_name || user?.username || 'Student'}
+        solved={solvedCount}
+        avgScore={avgScore}
+      />
     </div>
   )
 }

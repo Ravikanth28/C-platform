@@ -10,11 +10,13 @@ import {
 import toast from 'react-hot-toast'
 import api from '../api/client'
 import { StatusBadge } from '../components/ui/Badge'
-import { PageLoader } from '../components/ui/LoadingSpinner'
+import LoadingSpinner, { PageLoader } from '../components/ui/LoadingSpinner'
+import { formatDistanceToNow } from 'date-fns'
 import { useTheme } from '../context/ThemeContext'
 import { useAuth } from '../context/AuthContext'
 import useInteractiveRun from '../hooks/useInteractiveRun'
 import EditorTour from '../components/ui/EditorTour'
+import Markdown from '../components/ui/Markdown'
 
 const TOUR_KEY = 'cf_editor_tour_v1'
 
@@ -32,6 +34,7 @@ export default function CodingEnvironment() {
   const [allProblems, setAllProblems] = useState([])
   const [loading, setLoading]         = useState(true)
   const [code, setCode]               = useState(DEFAULT_C)
+  const [saveState, setSaveState]     = useState('saved') // 'saving' | 'saved'
   const [submitting, setSubmitting]   = useState(false)
   const [running, setRunning]         = useState(false)
   const [result, setResult]           = useState(null)
@@ -72,7 +75,7 @@ export default function CodingEnvironment() {
       selector: '[data-tour="editor"]',
       placement: 'left',
       title: 'Write your C code here',
-      body: 'A full code editor with syntax highlighting, auto-indent and autocomplete. Your starter `main()` is ready — write your solution using printf / scanf.',
+      body: 'A full code editor with syntax highlighting, auto-indent and autocomplete. Write your solution using printf / scanf. Your work auto-saves as you type, so a refresh never loses it.',
     },
     {
       selector: '[data-tour="editor-tools"]',
@@ -107,14 +110,26 @@ export default function CodingEnvironment() {
       body: 'This grades your code against ALL test cases (including hidden ones), records your score, and finishes the problem. Use it once you are confident.',
     },
     {
+      selector: '[data-tour="history"]',
+      placement: 'right',
+      title: 'History — your past attempts',
+      body: 'Every submission is saved here with its verdict, score and time. Open one to view the code you submitted and load it back into the editor.',
+      onEnter: () => { setActiveTab('history'); setShowResult(false) },
+    },
+    {
       selector: '[data-tour="timer"]',
       placement: 'bottom',
       title: 'Timer & navigation',
       body: 'Your elapsed time shows here (and the limit, if any). Use Prev / Next at the top to move between problems in this set.',
     },
     {
+      title: 'Keyboard shortcuts',
+      body: 'Ctrl/⌘ + Enter → Run · Ctrl/⌘ + Shift + Enter → Submit · Ctrl/⌘ + S → save draft. (Your code also auto-saves continuously.)',
+    },
+    {
       title: "You're all set",
-      body: 'Read → write → Run to self-check → Submit to score. Tip: press the ? in the editor toolbar to see this tour again whenever you need it. Happy coding!',
+      body: 'Read → write → Run to self-check → Submit to score. Tip: press the ? in the editor toolbar to replay this tour anytime. Happy coding!',
+      onEnter: () => { setActiveTab('statement'); setShowResult(false) },
     },
   ]
   const [aiQuestion, setAiQuestion]   = useState('')
@@ -129,6 +144,7 @@ export default function CodingEnvironment() {
   const timerRef     = useRef(null)
   const startTimeRef = useRef(Date.now())
   const containerRef = useRef(null)
+  const stateRef     = useRef({}) // latest values for global shortcuts
 
   useEffect(() => {
     const mode = isTestMode ? 'test' : 'practice'
@@ -139,7 +155,9 @@ export default function CodingEnvironment() {
       .then(([pRes, listRes]) => {
         setProblem(pRes.data)
         setAllProblems(listRes.data)
-        setCode(DEFAULT_C)
+        let saved = null
+        try { saved = localStorage.getItem(`cf_code_${problemId}`) } catch { /* ignore */ }
+        setCode(saved && saved.trim() ? saved : DEFAULT_C)
       })
       .catch(() => { toast.error('Problem not found'); navigate(-1) })
       .finally(() => setLoading(false))
@@ -162,6 +180,37 @@ export default function CodingEnvironment() {
     const t = setTimeout(() => setTourOpen(true), 600)
     return () => clearTimeout(t)
   }, [problem, isTestMode])
+
+  // Auto-save the student's code per problem (debounced) so a refresh never loses work
+  useEffect(() => {
+    if (!problem) return
+    setSaveState('saving')
+    const id = setTimeout(() => {
+      try { localStorage.setItem(`cf_code_${problemId}`, code) } catch { /* ignore */ }
+      setSaveState('saved')
+    }, 500)
+    return () => clearTimeout(id)
+  }, [code, problem, problemId])
+
+  // Global keyboard shortcuts: Ctrl/Cmd+Enter = Run, +Shift = Submit, Ctrl/Cmd+S = save draft
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      const s = stateRef.current
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        if (e.shiftKey) s.handleSubmit?.(true)
+        else s.handleRun?.()
+      } else if (e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        try { localStorage.setItem(`cf_code_${s.problemId}`, s.code) } catch { /* ignore */ }
+        setSaveState('saved')
+        toast.success('Draft saved')
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     if (!isTestMode || !problem) return
@@ -263,8 +312,8 @@ export default function CodingEnvironment() {
   const currentIndex = allProblems.findIndex(p => p.id === Number(problemId))
   const prevProblem  = currentIndex > 0 ? allProblems[currentIndex - 1] : null
   const nextProblem  = currentIndex < allProblems.length - 1 ? allProblems[currentIndex + 1] : null
-  const goPrev = () => { if (prevProblem) navigate(`/problems/${prevProblem.id}${isTestMode ? '?mode=test' : ''}`) }
-  const goNext = () => { if (nextProblem) navigate(`/problems/${nextProblem.id}${isTestMode ? '?mode=test' : ''}`) }
+  const goPrev = () => { if (prevProblem) navigate(`/code/${prevProblem.id}${isTestMode ? '?mode=test' : ''}`) }
+  const goNext = () => { if (nextProblem) navigate(`/code/${nextProblem.id}${isTestMode ? '?mode=test' : ''}`) }
 
   const handleSubmit = async (isFinalSubmit = true) => {
     if (!code.trim()) { toast.error('Write some code first!'); return }
@@ -344,6 +393,9 @@ export default function CodingEnvironment() {
 
   const handleVisualize = () => setShowVisualize(true)
 
+  // expose latest values to the global keyboard-shortcut handler
+  stateRef.current = { code, problemId, handleRun, handleSubmit }
+
   const sendAiMessage = async () => {
     if (!aiQuestion.trim()) return
     const userMsg = aiQuestion.trim()
@@ -351,15 +403,18 @@ export default function CodingEnvironment() {
     setAiQuestion('')
     setAiLoading(true)
     try {
-      await new Promise(r => setTimeout(r, 900))
-      const hints = [
-        `For "${problem?.title}", focus on the core logic: ${problem?.description?.slice(0, 100)}...`,
-        'Break the problem into smaller steps. What input do you receive? What should the output be?',
-        'Try writing pseudo-code first, then translate it to C.',
-        'Check your edge cases — what happens with empty input or boundary values?',
-        'Look at the sample test cases carefully. They reveal the expected behavior.',
-      ]
-      setAiMessages(prev => [...prev, { role: 'ai', text: hints[Math.floor(Math.random() * hints.length)] }])
+      const { data } = await api.post('/ai/tutor', {
+        question: userMsg,
+        problem_title: problem?.title || '',
+        problem_description: problem?.description || '',
+        code,
+      })
+      setAiMessages(prev => [...prev, { role: 'ai', text: data.answer || 'No response.' }])
+    } catch (err) {
+      const msg = err.response?.status === 502
+        ? "The AI tutor isn't configured on the server yet (no API key). In the meantime: re-read the samples, note what input you read and what output is expected, and sketch pseudo-code before writing C."
+        : (err.response?.data?.detail || 'Could not reach the AI tutor right now — please try again.')
+      setAiMessages(prev => [...prev, { role: 'ai', text: msg }])
     } finally {
       setAiLoading(false)
     }
@@ -490,6 +545,7 @@ export default function CodingEnvironment() {
           <div className="flex border-b border-line bg-surface-h flex-shrink-0">
             <TabBtn label="Statement" active={activeTab === 'statement' && !showResult} onClick={() => { setActiveTab('statement'); setShowResult(false) }} />
             <TabBtn label="AI Help"   active={activeTab === 'aihelp'   && !showResult} onClick={() => { setActiveTab('aihelp');   setShowResult(false) }} />
+            <TabBtn dataTour="history" label="History" active={activeTab === 'history'  && !showResult} onClick={() => { setActiveTab('history');  setShowResult(false) }} />
             {showResult && <TabBtn label="Result" active={showResult} onClick={() => setShowResult(true)} variant="result" />}
           </div>
 
@@ -524,6 +580,17 @@ export default function CodingEnvironment() {
                 loading={aiLoading}
               />
             )}
+            {activeTab === 'history' && !showResult && (
+              <SubmissionHistory
+                problemId={Number(problemId)}
+                onLoadCode={(c) => {
+                  setCode(c)
+                  setActiveTab('statement')
+                  setShowResult(false)
+                  toast.success('Loaded that submission into the editor')
+                }}
+              />
+            )}
           </div>
         </div>
 
@@ -536,9 +603,18 @@ export default function CodingEnvironment() {
                 C Language
                 <ChevronDown size={11} className="text-t4" />
               </div>
+              <span className="text-[11px] text-t4 hidden sm:inline tabular">
+                {saveState === 'saving' ? 'Saving…' : '✓ Saved'}
+              </span>
             </div>
-            <div data-tour="editor-tools" className="flex items-center gap-1">
-              <IconBtn icon={<HelpCircle size={14} />} tooltip="Show editor tour" onClick={() => setTourOpen(true)} />
+            <div data-tour="editor-tools" className="flex items-center gap-1.5">
+              <button
+                onClick={() => setTourOpen(true)}
+                title="Take a guided tour of the editor"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-line text-t3 hover:text-brand hover:border-line-strong transition-colors text-xs font-medium"
+              >
+                <HelpCircle size={13} /> Guide
+              </button>
               <IconBtn icon={<Copy size={14} />}     tooltip="Copy code"       onClick={handleCopyCode} />
               <IconBtn icon={<Settings size={14} />} tooltip="Editor settings" onClick={() => toast('Editor settings coming soon')} />
               <IconBtn
@@ -556,6 +632,14 @@ export default function CodingEnvironment() {
               value={code}
               onChange={(v) => setCode(v || '')}
               theme={isDark ? 'vs-dark' : 'light'}
+              onMount={(editor, monaco) => {
+                editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => stateRef.current.handleRun?.())
+                editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter, () => stateRef.current.handleSubmit?.(true))
+                editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+                  try { localStorage.setItem(`cf_code_${stateRef.current.problemId}`, stateRef.current.code) } catch { /* ignore */ }
+                  setSaveState('saved'); toast.success('Draft saved')
+                })
+              }}
               options={{
                 fontSize: 14,
                 fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
@@ -666,12 +750,13 @@ export default function CodingEnvironment() {
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-function TabBtn({ label, active, onClick, variant }) {
+function TabBtn({ label, active, onClick, variant, dataTour }) {
   const activeStyle = variant === 'result'
     ? { color: 'var(--ok)', borderColor: 'var(--ok)' }
     : { color: 'var(--t)', borderColor: 'var(--brand)' }
   return (
     <button
+      data-tour={dataTour}
       onClick={onClick}
       className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
         active ? '' : 'border-transparent text-t4 hover:text-t2'
@@ -692,6 +777,86 @@ function IconBtn({ icon, tooltip, onClick }) {
     >
       {icon}
     </button>
+  )
+}
+
+// ── Submission history ──────────────────────────────────────────────────────────
+
+function SubmissionHistory({ problemId, onLoadCode }) {
+  const [list, setList] = useState(null)
+  const [openId, setOpenId] = useState(null)
+  const [detail, setDetail] = useState(null)
+  const [loadingDetail, setLoadingDetail] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    api.get(`/submissions?problem_id=${problemId}`)
+      .then(r => { if (alive) setList(r.data) })
+      .catch(() => { if (alive) setList([]) })
+    return () => { alive = false }
+  }, [problemId])
+
+  const toggle = async (id) => {
+    if (openId === id) { setOpenId(null); return }
+    setOpenId(id); setDetail(null); setLoadingDetail(true)
+    try { const { data } = await api.get(`/submissions/${id}`); setDetail(data) }
+    catch { setDetail(null) }
+    finally { setLoadingDetail(false) }
+  }
+
+  const scoreColor = (n) => (n >= 100 ? 'var(--ok)' : n > 0 ? 'var(--warn)' : 'var(--err)')
+
+  if (list === null) return <div className="p-6"><LoadingSpinner size="sm" text="Loading attempts…" /></div>
+  if (list.length === 0) {
+    return (
+      <div className="p-6 text-center text-t4 text-[13px]">
+        No submissions yet. Press <span className="text-t3 font-semibold">Submit</span> to record your first attempt — they'll show up here.
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-4 space-y-2">
+      <p className="text-[11px] text-t4 mb-1">{list.length} attempt{list.length === 1 ? '' : 's'} · newest first</p>
+      {list.map((s) => (
+        <div key={s.id} className="rounded-lg border border-line surface-inset overflow-hidden">
+          <button
+            onClick={() => toggle(s.id)}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-surface-h transition-colors"
+          >
+            <StatusBadge status={s.status} />
+            <span className="text-xs font-semibold tabular" style={{ color: scoreColor(s.score) }}>{s.score}%</span>
+            <span className="text-[11px] text-t4 tabular">{s.test_cases_passed}/{s.test_cases_total}</span>
+            <span className="ml-auto text-[11px] text-t4 tabular">
+              {formatDistanceToNow(new Date(s.submitted_at), { addSuffix: true })}
+            </span>
+            <ChevronDown size={13} className={`text-t4 transition-transform ${openId === s.id ? 'rotate-180' : ''}`} />
+          </button>
+
+          {openId === s.id && (
+            <div className="border-t border-line p-3 space-y-2">
+              {loadingDetail ? (
+                <LoadingSpinner size="sm" />
+              ) : detail ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase tracking-wider text-t4 font-semibold">Submitted code</span>
+                    <button onClick={() => onLoadCode(detail.code)} className="btn-secondary btn-sm">
+                      <Copy size={12} /> Load into editor
+                    </button>
+                  </div>
+                  <pre className="font-mono text-xs text-t2 bg-surface-h border border-line rounded p-2 max-h-64 overflow-auto whitespace-pre">
+                    {detail.code}
+                  </pre>
+                </>
+              ) : (
+                <p className="text-xs text-t4">Could not load this submission.</p>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -836,10 +1001,69 @@ function SampleTestsPanel({ run, samples }) {
   )
 }
 
+// Compare expected vs actual line/char-by-char; highlight where "yours" diverges.
+function buildDiff(expected, actual) {
+  const e = (expected ?? '').split('\n')
+  const a = (actual ?? '').split('\n')
+  const rows = []
+  let firstDiff = null
+  const max = Math.max(e.length, a.length)
+  for (let li = 0; li < max; li++) {
+    const el = e[li]
+    const al = a[li]
+    if (al === undefined) { rows.push({ type: 'missing', text: el }); if (!firstDiff) firstDiff = { line: li + 1, col: 1 }; continue }
+    if (el === undefined) { rows.push({ type: 'line', segs: [{ t: al, bad: true }] }); if (!firstDiff) firstDiff = { line: li + 1, col: 1 }; continue }
+    if (el === al) { rows.push({ type: 'line', segs: [{ t: al, bad: false }] }); continue }
+    const segs = []
+    for (let ci = 0; ci < al.length; ci++) {
+      const bad = el[ci] !== al[ci]
+      if (bad && !firstDiff) firstDiff = { line: li + 1, col: ci + 1 }
+      const last = segs[segs.length - 1]
+      if (last && last.bad === bad) last.t += al[ci]
+      else segs.push({ t: al[ci], bad })
+    }
+    if (al.length < el.length && !firstDiff) firstDiff = { line: li + 1, col: al.length + 1 }
+    rows.push({ type: 'line', segs })
+  }
+  return { rows, firstDiff }
+}
+
+function DiffActual({ expected, actual, accent }) {
+  const { rows, firstDiff } = buildDiff(expected, actual)
+  const badStyle = { background: 'color-mix(in srgb, var(--err) 38%, transparent)', borderRadius: 2 }
+  return (
+    <>
+      {firstDiff && (
+        <div className="text-[10px] mb-1" style={{ color: accent }}>
+          first difference at line {firstDiff.line}, col {firstDiff.col}
+        </div>
+      )}
+      <pre
+        className="font-mono text-xs text-t2 rounded px-2 py-1.5 whitespace-pre-wrap break-words max-h-32 overflow-auto border"
+        style={{ borderColor: `color-mix(in srgb, ${accent} 25%, transparent)`, background: `color-mix(in srgb, ${accent} 6%, transparent)` }}
+      >
+        {rows.length === 0 || (rows.length === 1 && !rows[0].segs?.[0]?.t)
+          ? <span className="text-t4">(no output)</span>
+          : rows.map((row, ri) => (
+              <span key={ri}>
+                {row.type === 'missing'
+                  ? <span className="opacity-60 italic">{row.text || ' '}  ← missing line</span>
+                  : row.segs.map((s, si) => (
+                      <span key={si} style={s.bad ? badStyle : undefined}>{s.t}</span>
+                    ))}
+                {ri < rows.length - 1 ? '\n' : ''}
+              </span>
+            ))}
+      </pre>
+    </>
+  )
+}
+
 function SampleCaseRow({ r, index }) {
   const runFailed = r.run_status !== 'ok'
   const ok = r.passed
   const accent = ok ? 'var(--ok)' : 'var(--err)'
+  const showDiff = !ok && !runFailed   // ran fine but wrong answer → highlight the diff
   return (
     <div
       className="rounded-lg border overflow-hidden"
@@ -870,12 +1094,16 @@ function SampleCaseRow({ r, index }) {
         </div>
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: accent }}>Your Output</div>
-          <pre
-            className="font-mono text-xs rounded px-2 py-1.5 whitespace-pre-wrap break-words max-h-32 overflow-auto border"
-            style={{ color: accent, borderColor: `color-mix(in srgb, ${accent} 25%, transparent)`, background: `color-mix(in srgb, ${accent} 6%, transparent)` }}
-          >
-            {runFailed ? (r.run_status + (r.actual ? '\n' + r.actual : '')) : (r.actual || '(no output)')}
-          </pre>
+          {showDiff ? (
+            <DiffActual expected={r.expected} actual={r.actual} accent={accent} />
+          ) : (
+            <pre
+              className="font-mono text-xs rounded px-2 py-1.5 whitespace-pre-wrap break-words max-h-32 overflow-auto border"
+              style={{ color: accent, borderColor: `color-mix(in srgb, ${accent} 25%, transparent)`, background: `color-mix(in srgb, ${accent} 6%, transparent)` }}
+            >
+              {runFailed ? (r.run_status + (r.actual ? '\n' + r.actual : '')) : (r.actual || '(no output)')}
+            </pre>
+          )}
         </div>
       </div>
     </div>
@@ -1031,7 +1259,7 @@ function AiHelpPanel({ messages, question, setQuestion, onSend, loading }) {
                   <span className="text-[10px] text-brand font-semibold">AI Tutor</span>
                 </div>
               )}
-              {m.text}
+              {m.role === 'ai' ? <Markdown text={m.text} /> : m.text}
             </div>
           </div>
         ))}

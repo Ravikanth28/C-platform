@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Search, Eye, Filter, X, CheckCircle, XCircle, Clock, Code2 } from 'lucide-react'
-import { formatDistanceToNow, format } from 'date-fns'
-import api from '../../api/client'
+import { Search, Eye, CheckCircle, XCircle, Clock, Code2, Download } from 'lucide-react'
+import { formatDistanceToNow } from 'date-fns'
+import toast from 'react-hot-toast'
+import api, { downloadFile } from '../../api/client'
 import Modal          from '../../components/ui/Modal'
 import { PageLoader } from '../../components/ui/LoadingSpinner'
 import { StatusBadge, ModeBadge } from '../../components/ui/Badge'
@@ -11,6 +12,7 @@ export default function AdminReports() {
   const [loading, setLoading] = useState(true)
   const [mode, setMode]       = useState('')          // '' | 'practice' | 'test'
   const [search, setSearch]   = useState('')
+  const [status, setStatus]   = useState('')
   const [detail, setDetail]   = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [studentModal, setStudentModal]   = useState(null)
@@ -29,13 +31,14 @@ export default function AdminReports() {
     setDetailLoading(false)
   }
 
+  const statuses = [...new Set(rows.map((r) => r.status))]
   const filtered = rows.filter((r) => {
     const q = search.toLowerCase()
-    return (
+    const matchesSearch =
       r.student_name.toLowerCase().includes(q) ||
       r.problem_title.toLowerCase().includes(q) ||
       r.student_email.toLowerCase().includes(q)
-    )
+    return matchesSearch && (status === '' || r.status === status)
   })
 
   const grouped = new Map()
@@ -80,11 +83,21 @@ export default function AdminReports() {
               className={mode === val ? 'tab-active' : 'tab-inactive'}>{label}</button>
           ))}
         </div>
+        <select className="input max-w-[170px]" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="">All statuses</option>
+          {statuses.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
         <div className="relative flex-1 min-w-0 max-w-xs ml-auto">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-t4" />
           <input className="input pl-8" placeholder="Search by student or problem…"
             value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
+        <button
+          className="btn-secondary btn-sm"
+          onClick={() => downloadFile(`/reports/export${mode ? `?mode=${mode}` : ''}`, 'codeforge_gradebook.xlsx').catch(() => toast.error('Export failed'))}
+        >
+          <Download size={13} /> Export Excel
+        </button>
       </div>
 
       {/* Table */}
