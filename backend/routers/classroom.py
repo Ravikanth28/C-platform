@@ -251,6 +251,63 @@ def delete_assignment(assignment_id: int, db: Session = Depends(get_db), _admin=
     db.commit()
 
 
+@router.get("/assignments/{assignment_id}/progress")
+def assignment_progress(assignment_id: int, db: Session = Depends(get_db), _admin=Depends(get_admin_user)):
+    """Per-student completion for one assignment — who has solved which problems."""
+    a = db.query(models.Assignment).filter(models.Assignment.id == assignment_id).first()
+    if not a:
+        raise HTTPException(404, "Assignment not found")
+
+    problem_ids, problems = [], []
+    for ap in a.problems:
+        p = ap.problem
+        if p:
+            problem_ids.append(p.id)
+            problems.append({"id": p.id, "title": p.title, "difficulty": p.difficulty})
+    member_ids = [m.user_id for m in a.klass.members] if a.klass else []
+
+    solved_map, last_map = {}, {}
+    if problem_ids and member_ids:
+        rows = (
+            db.query(
+                models.Submission.user_id, models.Submission.problem_id,
+                models.Submission.submitted_at, models.Submission.status,
+            )
+            .filter(models.Submission.user_id.in_(member_ids), models.Submission.problem_id.in_(problem_ids))
+            .all()
+        )
+        for uid, pid, ts, status in rows:
+            if ts and (uid not in last_map or ts > last_map[uid]):
+                last_map[uid] = ts
+            if status == "Accepted":
+                solved_map.setdefault(uid, set()).add(pid)
+
+    members = db.query(models.User).filter(models.User.id.in_(member_ids)).all() if member_ids else []
+    students = []
+    for u in members:
+        solved = solved_map.get(u.id, set())
+        students.append({
+            "id": u.id,
+            "name": u.full_name or u.username,
+            "email": u.email,
+            "avatar_color": u.avatar_color,
+            "solved": [pid for pid in problem_ids if pid in solved],
+            "solved_count": len(solved),
+            "total": len(problem_ids),
+            "last_activity": _iso(last_map.get(u.id)),
+        })
+    students.sort(key=lambda s: (s["solved_count"], s["name"].lower()))  # least-done first
+
+    return {
+        "assignment": {
+            "id": a.id, "title": a.title,
+            "class_name": a.klass.name if a.klass else None,
+            "problems": problems, "member_count": len(member_ids),
+        },
+        "students": students,
+    }
+
+
 # ──────────────────────────── student view ─────────────────────────────────
 
 @router.get("/my-assignments")

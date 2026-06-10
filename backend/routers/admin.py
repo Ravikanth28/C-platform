@@ -1,16 +1,39 @@
 """Admin-only dashboard and user management."""
 from typing import List
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import func
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 import models
+import monitoring
 import schemas
 from auth import get_admin_user
 from database import get_db
 
 router = APIRouter()
+
+
+@router.get("/health")
+def system_health(request: Request, db: Session = Depends(get_db), _admin=Depends(get_admin_user)):
+    """Status of each backend service/dependency + recent warning/error logs."""
+    try:
+        db.execute(text("SELECT 1"))
+        db_ok, db_detail = True, "connected"
+    except Exception as e:  # noqa: BLE001
+        db_ok, db_detail = False, f"error: {str(e)[:140]}"
+
+    checks = monitoring.run_checks(db_ok, db_detail)
+    checks.append({
+        "name": "API server", "ok": True, "critical": True,
+        "detail": f"{len(request.app.routes)} routes mounted",
+    })
+
+    issues = [c["name"] for c in checks if c["critical"] and not c["ok"]]
+    warnings = [c["name"] for c in checks if not c["critical"] and not c["ok"]]
+    status = "down" if issues else ("degraded" if warnings else "healthy")
+
+    return {"status": status, "checks": checks, "logs": monitoring.recent_logs()}
 
 
 @router.get("/dashboard")

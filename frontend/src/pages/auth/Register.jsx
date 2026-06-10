@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, UserPlus } from 'lucide-react'
-import Logo from '../../components/ui/Logo'
 import toast from 'react-hot-toast'
 import api from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
-import ThemeToggle from '../../components/ui/ThemeToggle'
+import AuthShell from '../../components/ui/AuthShell'
 
 export default function Register() {
   const { login } = useAuth()
@@ -42,52 +41,44 @@ export default function Register() {
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
 
   return (
-    <div className="min-h-screen bg-beige-pg flex items-center justify-center px-4 py-8">
-      <div className="absolute top-4 right-4"><ThemeToggle /></div>
+    <AuthShell>
+      <div className="card">
+        <h2 className="h2">Create account</h2>
+        <p className="section-sub mb-6 mt-0.5">Join the platform today</p>
 
-      <div className="relative w-full max-w-md animate-fade-in">
-        <div className="flex flex-col items-center mb-8">
-          <Logo size={52} radius={14} className="shadow-sm mb-4" />
-          <h1 className="font-sans font-bold text-t text-2xl tracking-tight">CodeForge</h1>
-          <p className="text-t3 text-[13px] mt-1">Create your account</p>
-        </div>
-
-        <div className="card">
-          <h2 className="h3 mb-1">Register</h2>
-          <p className="section-sub mb-6">Join the platform today</p>
-
-          <form onSubmit={submit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label">Username *</label>
-                <input className="input" placeholder="username" value={form.username} onChange={set('username')} required />
-              </div>
-              <div>
-                <label className="label">Full name</label>
-                <input className="input" placeholder="John Doe" value={form.full_name} onChange={set('full_name')} />
-              </div>
-            </div>
-
+        <form onSubmit={submit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Email *</label>
-              <input className="input" type="email" placeholder="you@email.com" value={form.email} onChange={set('email')} required />
+              <label className="label">Username *</label>
+              <input className="input" placeholder="username" value={form.username} onChange={set('username')} required />
             </div>
-
             <div>
-              <label className="label">Role</label>
-              <select className="input" value={form.role} onChange={set('role')}>
-                <option value="student">Student</option>
-                <option value="admin">Admin</option>
-              </select>
+              <label className="label">Full name</label>
+              <input className="input" placeholder="John Doe" value={form.full_name} onChange={set('full_name')} />
             </div>
+          </div>
 
+          <div>
+            <label className="label">Email *</label>
+            <input className="input" type="email" placeholder="you@email.com" value={form.email} onChange={set('email')} required />
+          </div>
+
+          <div>
+            <label className="label">Role</label>
+            <select className="input" value={form.role} onChange={set('role')}>
+              <option value="student">Student</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Password *</label>
               <div className="relative">
                 <input
                   className="input pr-10"
                   type={showPw ? 'text' : 'password'}
-                  placeholder="Min 6 characters"
+                  placeholder="Min 6 chars"
                   value={form.password}
                   onChange={set('password')}
                   required
@@ -98,33 +89,25 @@ export default function Register() {
                 </button>
               </div>
             </div>
-
             <div>
-              <label className="label">Confirm password *</label>
-              <input
-                className="input"
-                type="password"
-                placeholder="Re-enter password"
-                value={form.confirm}
-                onChange={set('confirm')}
-                required
-              />
+              <label className="label">Confirm *</label>
+              <input className="input" type="password" placeholder="Re-enter" value={form.confirm} onChange={set('confirm')} required />
             </div>
+          </div>
 
-            <button type="submit" disabled={loading} className="btn-primary w-full mt-2">
-              <UserPlus size={16} />
-              {loading ? 'Creating account…' : 'Create account'}
-            </button>
-          </form>
+          <button type="submit" disabled={loading} className="btn-primary w-full mt-1 h-11">
+            <UserPlus size={16} />
+            {loading ? 'Creating account…' : 'Create account'}
+          </button>
+        </form>
 
-          <p className="text-center text-[13px] text-t3 mt-5">
-            Already have an account?{' '}
-            <Link to="/login" className="text-brand font-medium hover:opacity-80 transition-opacity">
-              Sign in
-            </Link>
-          </p>
-        </div>
+        <p className="text-center text-[13px] text-t3 mt-5">
+          Already have an account?{' '}
+          <Link to="/login" className="text-brand font-medium hover:opacity-80 transition-opacity">
+            Sign in
+          </Link>
+        </p>
       </div>
-    </div>
+    </AuthShell>
   )
 }

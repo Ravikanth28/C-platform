@@ -144,6 +144,7 @@ export default function CodingEnvironment() {
 
   const timerRef     = useRef(null)
   const startTimeRef = useRef(Date.now())
+  const autoSubmittedRef = useRef(false)
   const containerRef = useRef(null)
   const stateRef     = useRef({}) // latest values for global shortcuts
 
@@ -171,6 +172,30 @@ export default function CodingEnvironment() {
     }, 1000)
     return () => clearInterval(timerRef.current)
   }, [problem])
+
+  // Timed test: persist the start so a refresh / disconnect resumes the SAME clock
+  useEffect(() => {
+    if (!problem || !isTestMode || !problem.duration) return
+    const key = `cf_teststart_${problemId}`
+    let start = null
+    try { const s = localStorage.getItem(key); if (s) start = parseInt(s, 10) } catch { /* ignore */ }
+    if (!start || Number.isNaN(start)) {
+      start = Date.now()
+      try { localStorage.setItem(key, String(start)) } catch { /* ignore */ }
+    }
+    startTimeRef.current = start
+    setTimer(Math.floor((Date.now() - start) / 1000))
+  }, [problem, isTestMode, problemId])
+
+  // Auto-submit once the time limit is reached (fires once)
+  useEffect(() => {
+    if (!isTestMode || !problem?.duration || autoSubmittedRef.current) return
+    if (timer >= problem.duration * 60) {
+      autoSubmittedRef.current = true
+      toast.error("Time's up — submitting your latest code.")
+      handleSubmit(true)
+    }
+  }, [timer, isTestMode, problem])
 
   // First-time guided tour (practice mode only — don't distract during a timed test)
   useEffect(() => {
@@ -330,6 +355,7 @@ export default function CodingEnvironment() {
       })
       
       if (isFinalSubmit) {
+        try { localStorage.removeItem(`cf_teststart_${problemId}`) } catch { /* ignore */ }
         toast.success('Successfully submitted!')
         navigate(`/${user?.role || 'student'}/reports`)
         return
@@ -1388,6 +1414,95 @@ function explainStep(step, prevLocals, srcLine) {
   return { what, changes }
 }
 
+// gdb prints C arrays as "{1, 2, 3}" (or "{{..},{..}}" for 2D, or "{0 <repeats N times>}")
+const isArrayVal = (v) => typeof v === 'string' && v.trim().startsWith('{') && v.trim().endsWith('}')
+
+function parseCells(str) {
+  const inner = String(str).trim().slice(1, -1)
+  const parts = []
+  let depth = 0, buf = ''
+  for (const ch of inner) {
+    if (ch === '{') { depth++; buf += ch }
+    else if (ch === '}') { depth--; buf += ch }
+    else if (ch === ',' && depth === 0) { parts.push(buf.trim()); buf = '' }
+    else buf += ch
+  }
+  if (buf.trim() !== '') parts.push(buf.trim())
+  const out = []
+  for (const p of parts) {
+    const m = p.match(/^(.*?)\s*<repeats (\d+) times>$/)
+    if (m) { const n = Math.min(parseInt(m[2], 10), 100); for (let k = 0; k < n; k++) out.push(m[1]) }
+    else out.push(p)
+    if (out.length > 256) break
+  }
+  if (out.length && out[out.length - 1] === '') out.pop()  // drop trailing comma artifact
+  return out
+}
+
+// Which indices of array `name` are touched by the current source line (A[i], A[3], A[i+1])
+function accessedIndices(srcLine, name, locals) {
+  const set = new Set()
+  try {
+    const re = new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\[([^\\]]+)\\]', 'g')
+    let m
+    while ((m = re.exec(srcLine)) !== null) {
+      const e = m[1].trim()
+      let val = null
+      if (/^\d+$/.test(e)) val = parseInt(e, 10)
+      else if (locals[e] != null && /^-?\d+$/.test(String(locals[e]).trim())) val = parseInt(locals[e], 10)
+      else {
+        const mm = e.match(/^([A-Za-z_]\w*)\s*([+\-])\s*(\d+)$/)
+        if (mm && locals[mm[1]] != null && /^-?\d+$/.test(String(locals[mm[1]]).trim()))
+          val = parseInt(locals[mm[1]], 10) + (mm[2] === '+' ? 1 : -1) * parseInt(mm[3], 10)
+      }
+      if (val != null && val >= 0) set.add(val)
+    }
+  } catch { /* ignore */ }
+  return set
+}
+
+function ArrayCells({ value, prevValue, accessed }) {
+  const cells = parseCells(value)
+  const is2D = cells.length > 0 && cells.every(c => c.trim().startsWith('{'))
+  const prevCells = isArrayVal(prevValue || '') ? parseCells(prevValue) : []
+
+  const Cell = ({ v, i, changed, acc }) => (
+    <div className="flex flex-col items-center flex-shrink-0">
+      <div className="rounded-md border min-w-[32px] px-2 py-1 text-center font-mono text-[13px] transition-colors"
+        style={acc
+          ? { borderColor: 'var(--brand)', background: 'var(--brandGhost)', color: 'var(--brand)', fontWeight: 700 }
+          : changed
+            ? { borderColor: 'color-mix(in srgb, var(--ok) 50%, transparent)', background: 'color-mix(in srgb, var(--ok) 14%, transparent)', color: 'var(--ok)', fontWeight: 600 }
+            : { borderColor: 'var(--b)', background: 'var(--beige-pill)', color: 'var(--t)' }}>
+        {v}
+      </div>
+      {i != null && <span className="text-[9px] text-t4 mt-0.5 tabular">{i}</span>}
+    </div>
+  )
+
+  if (is2D) {
+    return (
+      <div className="space-y-1.5">
+        {cells.map((row, r) => (
+          <div key={r} className="flex items-center gap-1">
+            <span className="text-[9px] text-t4 w-4 tabular">{r}</span>
+            <div className="flex flex-wrap gap-1">
+              {parseCells(row).map((v, c) => <Cell key={c} v={v} i={null} />)}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-wrap gap-1">
+      {cells.map((v, i) => (
+        <Cell key={i} v={v} i={i} acc={accessed.has(i)} changed={prevCells.length > 0 && String(prevCells[i]) !== String(v)} />
+      ))}
+    </div>
+  )
+}
+
 function VisualizeModal({ code: initialCode, defaultInput = '', onClose }) {
   const [input, setInput]   = useState(defaultInput)
   const [loading, setLoading] = useState(false)
@@ -1582,12 +1697,25 @@ function VisualizeModal({ code: initialCode, defaultInput = '', onClose }) {
                 </div>
                 <div className="flex-1 overflow-auto p-2">
                   {!hasSteps ? (
-                    <p className="text-[13px] text-t4 px-1">{loading ? 'Tracing…' : 'Press Run to watch variables change line-by-line.'}</p>
+                    <p className="text-[13px] text-t4 px-1">{loading ? 'Tracing…' : (trace?.note || 'Press Run to watch variables change line-by-line.')}</p>
                   ) : Object.keys(cur?.locals || {}).length === 0 ? (
                     <p className="text-[13px] text-t4 px-1">No variables in scope yet.</p>
                   ) : (
                     <div className="space-y-1.5">
                       {Object.entries(cur.locals).map(([k, v]) => {
+                        if (isArrayVal(v)) {
+                          const acc = accessedIndices(lines[cur.line - 1] || '', k, cur.locals)
+                          return (
+                            <div key={k} className="rounded-lg border border-line bg-beige-pill px-2.5 py-2">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <span className="font-mono text-[13px] font-semibold text-brand">{k}</span>
+                                <span className="text-[10px] text-t4 border border-line rounded px-1">array</span>
+                                {acc.size > 0 && <span className="text-[10px] ml-auto" style={{ color: 'var(--brand)' }}>accessing [{[...acc].join(', ')}]</span>}
+                              </div>
+                              <ArrayCells value={v} prevValue={prevLocals[k]} accessed={acc} />
+                            </div>
+                          )
+                        }
                         const changed = String(prevLocals[k]) !== String(v)
                         return (
                           <div key={k} className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors"
@@ -1621,7 +1749,14 @@ function VisualizeModal({ code: initialCode, defaultInput = '', onClose }) {
                     {trace.status === 'NoGDB' ? 'Step-visualizer needs gdb on the server (msys2: pacman -S mingw-w64-ucrt-x86_64-gdb), then retry.' : (trace.error || trace.status)}
                   </pre>
                 ) : !hasSteps ? (
-                  <p className="text-[13px] text-t4 font-sans">Output appears here as each printf runs.</p>
+                  trace?.output ? (
+                    <div>
+                      {trace.note && <p className="text-[12px] text-t4 font-sans mb-2">{trace.note}</p>}
+                      <pre className="whitespace-pre-wrap break-words" style={{ color: 'var(--ok)' }}>{trace.output}</pre>
+                    </div>
+                  ) : (
+                    <p className="text-[13px] text-t4 font-sans">{loading ? 'Tracing…' : 'Output appears here as each printf runs.'}</p>
+                  )
                 ) : (
                   <div className="leading-relaxed">
                     {outLines.slice(0, revealed).map((ln, i, arr) => {

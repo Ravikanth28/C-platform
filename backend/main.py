@@ -5,10 +5,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+import monitoring
 from database import Base, engine
 from routers import (
     admin, ai_router, analytics, auth, classroom, notes, problems, reports, students, submissions,
 )
+
+monitoring.install_log_capture()
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 

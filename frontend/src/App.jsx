@@ -10,6 +10,7 @@ import AdminNotes      from './pages/admin/Notes'
 import AdminPractice   from './pages/admin/PracticeMode'
 import AdminTest       from './pages/admin/TestMode'
 import AdminReports    from './pages/admin/Reports'
+import AdminSystem     from './pages/admin/System'
 import Classroom       from './pages/Classroom'
 import Analytics       from './pages/Analytics'
 
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="classroom" element={<Classroom />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="reports"   element={<AdminReports />} />
+        <Route path="system"    element={<AdminSystem />} />
       </Route>
 
       {/* Student */}

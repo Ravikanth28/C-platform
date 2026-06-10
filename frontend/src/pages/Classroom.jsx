@@ -14,7 +14,7 @@ import api from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import Modal from '../components/ui/Modal'
 import StatCard from '../components/ui/StatCard'
-import { PageLoader } from '../components/ui/LoadingSpinner'
+import LoadingSpinner, { PageLoader } from '../components/ui/LoadingSpinner'
 import { DifficultyBadge } from '../components/ui/Badge'
 import useChartTheme from '../hooks/useChartTheme'
 
@@ -62,6 +62,14 @@ function AdminAssignments() {
   const [showAssign, setShowAssign] = useState(false)
   const [selected, setSelected] = useState(null)
   const [classSearch, setClassSearch] = useState('')
+  const [drill, setDrill] = useState(null)        // assignment being inspected
+  const [drillData, setDrillData] = useState(null)
+
+  const openDrill = async (a) => {
+    setDrill(a); setDrillData(null)
+    try { const { data } = await api.get(`/classroom/assignments/${a.id}/progress`); setDrillData(data) }
+    catch { setDrillData({ error: true }) }
+  }
 
   const load = () => {
     api.get('/classroom/classes').then(r => {
@@ -166,16 +174,18 @@ function AdminAssignments() {
         ) : (
           <div className="space-y-2 overflow-y-auto max-h-[62vh] pr-1">
             {classAssignments.map(a => (
-              <div key={a.id} className="rounded-lg surface-inset border border-line p-3">
+              <div key={a.id} onClick={() => openDrill(a)}
+                className="rounded-lg surface-inset border border-line p-3 cursor-pointer hover:border-line-strong transition-colors">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-[13px] font-semibold text-t truncate">{a.title}</p>
                     <div className="flex items-center gap-2 mt-0.5 text-[11px] text-t4">
                       <span>{a.problem_count} problems</span>
                       {a.due_date && <span className="inline-flex items-center gap-1"><CalendarClock size={11} /> due {format(new Date(a.due_date), 'MMM d, h:mm a')}</span>}
+                      <span className="text-brand">· view who's done →</span>
                     </div>
                   </div>
-                  <button onClick={() => deleteAssign(a.id)} className="text-t4 hover:text-[color:var(--err)] transition-colors flex-shrink-0"><Trash2 size={13} /></button>
+                  <button onClick={(e) => { e.stopPropagation(); deleteAssign(a.id) }} className="text-t4 hover:text-[color:var(--err)] transition-colors flex-shrink-0"><Trash2 size={13} /></button>
                 </div>
                 <div className="mt-2">
                   <div className="flex justify-between text-[11px] text-t4 mb-1 tabular">
@@ -193,7 +203,78 @@ function AdminAssignments() {
 
       {showClass && <NewClassModal students={students} onClose={() => setShowClass(false)} onSaved={() => { setShowClass(false); load() }} />}
       {showAssign && <NewAssignmentModal classes={classes} defaultClassId={selected} problems={problems} onClose={() => setShowAssign(false)} onSaved={() => { setShowAssign(false); load() }} />}
+      {drill && <AssignmentProgressModal data={drillData} onClose={() => setDrill(null)} />}
     </div>
+  )
+}
+
+function AssignmentProgressModal({ data, onClose }) {
+  return (
+    <Modal open onClose={onClose} title={data?.assignment ? `${data.assignment.title} · who's done` : 'Assignment progress'} size="xl">
+      {!data ? (
+        <div className="py-10"><LoadingSpinner text="Loading progress…" /></div>
+      ) : data.error ? (
+        <p className="text-t4 text-[13px]">Could not load progress.</p>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-[12px] text-t4">
+            {data.assignment.class_name} · {data.assignment.member_count} students · {data.assignment.problems.length} problems · sorted by least completed
+          </p>
+          <div className="table-container max-h-[58vh] overflow-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="table-header">
+                  <th className="table-cell">Student</th>
+                  {data.assignment.problems.map((p, i) => (
+                    <th key={p.id} className="table-cell text-center" title={p.title}>P{i + 1}</th>
+                  ))}
+                  <th className="table-cell">Done</th>
+                  <th className="table-cell">Last active</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.students.length === 0 && (
+                  <tr><td colSpan={data.assignment.problems.length + 3} className="table-cell text-center text-t4 py-8">No students in this class yet.</td></tr>
+                )}
+                {data.students.map(s => {
+                  const solvedSet = new Set(s.solved)
+                  const pct = s.total ? Math.round(s.solved_count / s.total * 100) : 0
+                  return (
+                    <tr key={s.id} className="table-row">
+                      <td className="table-cell">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-semibold font-serif flex-shrink-0" style={{ background: s.avatar_color || 'var(--brand-solid)' }}>{(s.name || '?')[0].toUpperCase()}</div>
+                          <span className="text-t font-medium truncate">{s.name}</span>
+                        </div>
+                      </td>
+                      {data.assignment.problems.map(p => (
+                        <td key={p.id} className="table-cell text-center">
+                          {solvedSet.has(p.id)
+                            ? <CheckCircle2 size={15} className="inline" style={{ color: 'var(--ok)' }} />
+                            : <Circle size={15} className="inline text-t4" />}
+                        </td>
+                      ))}
+                      <td className="table-cell">
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 h-1.5 rounded-full bg-surface-h overflow-hidden"><div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct === 100 ? 'var(--ok)' : 'var(--brand)' }} /></div>
+                          <span className="text-[11px] tabular text-t3">{s.solved_count}/{s.total}</span>
+                        </div>
+                      </td>
+                      <td className="table-cell text-[11px] text-t4 tabular">{s.last_activity ? formatDistanceToNow(new Date(s.last_activity), { addSuffix: true }) : '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="text-[11px] text-t4 flex flex-wrap gap-x-4 gap-y-1">
+            {data.assignment.problems.map((p, i) => (
+              <span key={p.id}><span className="font-semibold text-t3">P{i + 1}</span> = {p.title}</span>
+            ))}
+          </div>
+        </div>
+      )}
+    </Modal>
   )
 }
 

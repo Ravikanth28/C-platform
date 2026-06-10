@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   LayoutDashboard, BookOpen, Code2, FlaskConical,
-  BarChart3, LogOut, X, GraduationCap, LineChart,
+  BarChart3, LogOut, X, GraduationCap, LineChart, Activity,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Logo from './ui/Logo'
@@ -15,6 +15,7 @@ const adminNav = [
   { to: '/admin/classroom', icon: GraduationCap,   label: 'Classroom' },
   { to: '/admin/analytics', icon: LineChart,       label: 'Analytics' },
   { to: '/admin/reports',   icon: BarChart3,       label: 'Reports' },
+  { to: '/admin/system',    icon: Activity,        label: 'System' },
 ]
 
 const studentNav = [

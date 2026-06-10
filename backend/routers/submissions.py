@@ -125,9 +125,15 @@ def visualize(payload: VisualizeRequest, _user: models.User = Depends(get_curren
     """
     import json as _json
     import os as _os
+    import shutil as _sh
     import subprocess as _sp
 
     with tempfile.TemporaryDirectory() as tmp:
+        # No gdb on this host (e.g. Render native)? Use the gcc-only instrumentation tracer.
+        if _sh.which("gdb") is None:
+            from instrument_tracer import trace as _inst_trace
+            return _inst_trace(payload.code, payload.custom_input, tmp)
+
         tmp_fwd = tmp.replace("\\", "/")
         src = _os.path.join(tmp, "sol.c")
         with open(src, "w", encoding="utf-8") as f:
