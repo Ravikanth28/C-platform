@@ -10,7 +10,8 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       proxy: {
-        '/api': { target: apiTarget, changeOrigin: true },
+        // ws:true lets the interactive console WebSocket pass through to FastAPI
+        '/api': { target: apiTarget, changeOrigin: true, ws: true },
         '/uploads': { target: apiTarget, changeOrigin: true },
       },
     },
