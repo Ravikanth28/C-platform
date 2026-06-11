@@ -273,6 +273,30 @@ class AssignmentProblem(Base):
 #   kind="predict" → student predicts a snippet's stdout
 #   kind="fixbug"  → student repairs buggy code until it produces expected_output
 
+class Lesson(Base):
+    """Interactive lesson: ordered blocks (concept / runnable example / quick check),
+    stored as a JSON string in `content`."""
+    __tablename__ = "lessons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(200), nullable=False)
+    topic = Column(String(40))                 # canonical topic key
+    order_index = Column(Integer, default=0)   # ordering within the curriculum
+    content = Column(Text)                     # JSON: [{type, ...}, ...]
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class LessonCompletion(Base):
+    """Records that a student finished a lesson (for progress + admin analytics)."""
+    __tablename__ = "lesson_completions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lesson_id = Column(Integer, ForeignKey("lessons.id", ondelete="CASCADE"), index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    completed_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
 class Challenge(Base):
     __tablename__ = "challenges"
 

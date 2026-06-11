@@ -3,6 +3,7 @@ C Code Runner – compiles and executes C code in a temporary sandbox.
 Works on both Windows (gcc must be in PATH) and Linux.
 """
 import os
+import re
 import signal
 import subprocess
 import tempfile
@@ -35,6 +36,28 @@ def _limit_preexec():
     def _apply():
         for res, val in (
             (resource.RLIMIT_AS, _MEM_BYTES),
+            (resource.RLIMIT_CPU, _CPU_SECS),
+            (resource.RLIMIT_FSIZE, _FSIZE_BYTES),
+            (getattr(resource, "RLIMIT_NPROC", None), _NPROC),
+        ):
+            if res is None:
+                continue
+            try:
+                resource.setrlimit(res, (val, val))
+            except Exception:
+                pass
+
+    return _apply
+
+
+def _memcheck_preexec():
+    """Like _limit_preexec but WITHOUT the address-space cap — AddressSanitizer
+    reserves a huge virtual address range and would be killed by RLIMIT_AS."""
+    if resource is None:
+        return None
+
+    def _apply():
+        for res, val in (
             (resource.RLIMIT_CPU, _CPU_SECS),
             (resource.RLIMIT_FSIZE, _FSIZE_BYTES),
             (getattr(resource, "RLIMIT_NPROC", None), _NPROC),
@@ -276,4 +299,107 @@ def judge_submission(code: str, test_cases: List[Dict], time_limit: float = 5.0)
             "total": total,
             "score": score,
             "execution_time": max_time,
+        }
+
+
+# ──────────────────────── Memory-safety check (ASan / UBSan) ────────────────
+
+_SANITIZE_FLAGS = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-g", "-O1"]
+
+# Map raw sanitizer error kinds to beginner-friendly explanations.
+_ASAN_KIND_HELP = {
+    "heap-buffer-overflow": "You read/wrote past the end of a heap array (malloc'd memory). Check your indices and sizes.",
+    "stack-buffer-overflow": "You read/wrote past the end of a local array. An index is out of bounds.",
+    "global-buffer-overflow": "You read/wrote past the end of a global/static array. Check the index range.",
+    "heap-use-after-free": "You used memory after free()-ing it. Don't access a pointer once it's freed.",
+    "stack-use-after-return": "You used a pointer to a local variable after its function returned.",
+    "double-free": "You called free() twice on the same pointer.",
+    "attempting-free-on-address": "You free()'d a pointer that wasn't returned by malloc/calloc.",
+}
+
+
+def _parse_sanitizer(text: str) -> List[Dict]:
+    """Turn ASan/UBSan stderr into a small list of findings (with line numbers when known)."""
+    findings = []
+    if not text:
+        return findings
+
+    # UndefinedBehaviorSanitizer: "<file>:LINE:COL: runtime error: <msg>"
+    for m in re.finditer(r":(\d+):\d+:\s*runtime error:\s*([^\n]+)", text):
+        findings.append({"type": "undefined-behavior", "line": int(m.group(1)),
+                         "title": m.group(2).strip(), "help": "Undefined behavior — e.g. overflow, bad shift, or out-of-range value."})
+
+    # AddressSanitizer: "ERROR: AddressSanitizer: <kind> on address ..."
+    for m in re.finditer(r"ERROR:\s*AddressSanitizer:\s*([a-z0-9\-]+)", text):
+        kind = m.group(1)
+        findings.append({"type": "address", "line": None,
+                         "title": kind.replace("-", " "),
+                         "help": _ASAN_KIND_HELP.get(kind, "Invalid memory access.")})
+
+    # LeakSanitizer
+    if "detected memory leaks" in text or "LeakSanitizer" in text:
+        lm = re.search(r"SUMMARY:\s*AddressSanitizer:\s*[\d,]+\s*byte\(s\)\s*leaked", text) \
+            or re.search(r"(\d[\d,]*)\s*byte\(s\)\s*leaked", text)
+        bytes_txt = ""
+        bm = re.search(r"(\d[\d,]*)\s*byte\(s\)\s*leaked", text)
+        if bm:
+            bytes_txt = f" (~{bm.group(1)} bytes)"
+        findings.append({"type": "leak", "line": None,
+                         "title": f"memory leak{bytes_txt}",
+                         "help": "You allocated memory with malloc/calloc but never free()'d it."})
+
+    # de-dupe by (type, line, title)
+    seen, out = set(), []
+    for f in findings:
+        key = (f["type"], f["line"], f["title"])
+        if key not in seen:
+            seen.add(key); out.append(f)
+    return out
+
+
+def memcheck(code: str, input_data: str = "", time_limit: float = 8.0) -> Dict:
+    """
+    Compile with AddressSanitizer + UndefinedBehaviorSanitizer and run once.
+    Detects leaks, buffer overflows, use-after-free, out-of-bounds, bad shifts, etc.
+    Returns {status, clean, output, report, findings}.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_file = os.path.join(tmpdir, "solution.c")
+        exe = _exe_name(tmpdir)
+        with open(src_file, "w", encoding="utf-8") as f:
+            f.write(code)
+
+        cmd = ["gcc", "-o", exe, src_file, *_SANITIZE_FLAGS, "-lm"]
+        try:
+            comp = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
+        except FileNotFoundError:
+            return {"status": "Error", "clean": False, "output": "", "findings": [],
+                    "report": "gcc not found on the server."}
+        if comp.returncode != 0:
+            # Could be a real compile error, or this toolchain lacks the sanitizer libs
+            # (common on Windows/mingw — works on the Linux Render image).
+            err_l = (comp.stderr or "").lower()
+            unsupported = any(t in err_l for t in ("asan", "sanitiz", "-lasan", "__ubsan", "libasan"))
+            return {"status": "Compilation Error", "clean": False, "output": "", "findings": [],
+                    "report": comp.stderr,
+                    "note": "Memory check needs a server with AddressSanitizer (your Render Linux deploy has it; local mingw may not)." if unsupported else None}
+
+        env = dict(os.environ)
+        env["ASAN_OPTIONS"] = "detect_leaks=1:abort_on_error=0:exitcode=1:print_summary=1:log_to_stderr=1"
+        env["UBSAN_OPTIONS"] = "print_stacktrace=0:halt_on_error=0"
+        try:
+            proc = subprocess.run([exe], input=input_data or "", capture_output=True, text=True,
+                                  timeout=time_limit, preexec_fn=_memcheck_preexec(), env=env)
+        except subprocess.TimeoutExpired:
+            return {"status": "Time Limit Exceeded", "clean": False, "output": "", "findings": [], "report": ""}
+
+        report = proc.stderr or ""
+        findings = _parse_sanitizer(report)
+        clean = not findings
+        return {
+            "status": "ok",
+            "clean": clean,
+            "output": _normalize(proc.stdout)[:_MAX_OUTPUT],
+            "report": report[:8000],
+            "findings": findings,
         }

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { RefreshCw, CheckCircle2, XCircle, AlertTriangle, Search, Pause, Play } from 'lucide-react'
-import api from '../../api/client'
+import { RefreshCw, CheckCircle2, XCircle, AlertTriangle, Search, Pause, Play, Database, HardDrive, Download, Trash2, Loader2 } from 'lucide-react'
+import toast from 'react-hot-toast'
+import api, { downloadFile } from '../../api/client'
 import { PageLoader } from '../../components/ui/LoadingSpinner'
+import Modal from '../../components/ui/Modal'
 
 const STATUS = {
   healthy:  { color: 'var(--ok)',   label: 'All systems operational' },
@@ -106,6 +108,44 @@ export default function AdminSystem() {
         ))}
       </div>
 
+      {/* Storage usage */}
+      {data.storage?.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {data.storage.map((s) => {
+            const Icon = s.kind === 'db' ? Database : HardDrive
+            const over = s.warn
+            const near = !over && s.percent >= 75
+            const color = over ? 'var(--err)' : near ? 'var(--warn)' : 'var(--ok)'
+            return (
+              <div key={s.name} className="card">
+                <div className="flex items-center gap-2 mb-2">
+                  <Icon size={16} style={{ color }} />
+                  <span className="text-[13px] font-semibold text-t">{s.name}</span>
+                  {over && <span className="text-[10px] ml-auto px-1.5 py-0.5 rounded" style={{ color: 'var(--err)', background: 'color-mix(in srgb, var(--err) 14%, transparent)' }}>≥ 90% — warning</span>}
+                </div>
+                {s.error ? (
+                  <p className="text-[12px] text-t4 font-mono break-words">unavailable: {s.error}</p>
+                ) : (
+                  <>
+                    <div className="flex justify-between text-[12px] text-t3 mb-1.5">
+                      <span className="tabular">{s.used_mb} MB / {s.limit_mb} MB{s.rows != null ? ` · ${s.rows.toLocaleString()} rows` : ''}</span>
+                      <span className="tabular font-semibold" style={{ color }}>{s.percent}%</span>
+                    </div>
+                    <div className="h-2.5 rounded-full surface-inset overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, s.percent)}%`, background: color }} />
+                    </div>
+                    {s.note && <p className="text-[11px] text-t4 mt-1.5">{s.note}</p>}
+                  </>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Data & backup */}
+      <DataBackup onChanged={() => load()} />
+
       {/* Live console */}
       <div className="card">
         <div className="flex items-center gap-3 flex-wrap mb-3">
@@ -170,6 +210,128 @@ export default function AdminSystem() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function DataBackup({ onChanged }) {
+  const [downloading, setDownloading] = useState('')
+  const [showPurge, setShowPurge] = useState(false)
+  const [scope, setScope] = useState('submissions')
+  const [confirm, setConfirm] = useState('')
+  const [purging, setPurging] = useState(false)
+
+  const download = async (fmt) => {
+    setDownloading(fmt)
+    try {
+      const ext = fmt === 'xlsx' ? 'xlsx' : 'json'
+      await downloadFile(`/admin/backup?format=${fmt}`, `codeforge_db_backup.${ext}`)
+      toast.success('Database backup downloaded')
+    } catch { toast.error('Backup failed') }
+    finally { setDownloading('') }
+  }
+
+  const downloadFiles = async () => {
+    setDownloading('files')
+    try {
+      await downloadFile('/admin/backup/files', 'codeforge_files.zip')
+      toast.success('Files backup downloaded')
+    } catch { toast.error('Files backup failed') }
+    finally { setDownloading('') }
+  }
+
+  const purge = async () => {
+    if (confirm !== 'DELETE') return
+    setPurging(true)
+    try {
+      const { data } = await api.post('/admin/purge', { confirm, scope })
+      const total = Object.values(data.deleted || {}).reduce((a, b) => a + b, 0)
+      toast.success(`Cleared ${total.toLocaleString()} records`)
+      setShowPurge(false); setConfirm('')
+      onChanged?.()
+    } catch (e) { toast.error(e.response?.data?.detail || 'Purge failed') }
+    finally { setPurging(false) }
+  }
+
+  return (
+    <div className="card">
+      <h3 className="h3 mb-1">Data &amp; backup</h3>
+      <p className="section-sub mb-4">Your two storage areas are backed up separately.</p>
+
+      {/* Database (TiDB) */}
+      <div className="rounded-lg border border-line p-3 mb-3">
+        <div className="flex items-center gap-2 mb-1">
+          <Database size={15} className="text-t3" />
+          <span className="text-[13px] font-semibold text-t">Database (TiDB)</span>
+          <span className="text-[11px] text-t4">— all records: users, problems, submissions, classes…</span>
+        </div>
+        <p className="text-[12px] text-t4 mb-2.5">Full export (nothing omitted). Download a backup, then free up space by clearing records — tables and logins are kept.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="btn-secondary btn-sm" disabled={!!downloading} onClick={() => download('json')}>
+            {downloading === 'json' ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Backup (JSON)
+          </button>
+          <button className="btn-secondary btn-sm" disabled={!!downloading} onClick={() => download('xlsx')}>
+            {downloading === 'xlsx' ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Backup (Excel)
+          </button>
+          <button className="btn-sm ml-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium border"
+            style={{ color: 'var(--err)', borderColor: 'color-mix(in srgb, var(--err) 40%, transparent)' }}
+            onClick={() => setShowPurge(true)}>
+            <Trash2 size={13} /> Free up space
+          </button>
+        </div>
+      </div>
+
+      {/* Files (Render disk) */}
+      <div className="rounded-lg border border-line p-3">
+        <div className="flex items-center gap-2 mb-1">
+          <HardDrive size={15} className="text-t3" />
+          <span className="text-[13px] font-semibold text-t">Files (Render disk)</span>
+          <span className="text-[11px] text-t4">— uploaded note files (PDF/DOCX)</span>
+        </div>
+        <p className="text-[12px] text-t4 mb-2.5">These sit on Render's ephemeral disk and are <b>wiped on every redeploy</b> — download a ZIP to keep them safe.</p>
+        <button className="btn-secondary btn-sm" disabled={!!downloading} onClick={downloadFiles}>
+          {downloading === 'files' ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Download files (ZIP)
+        </button>
+      </div>
+
+      <Modal open={showPurge} onClose={() => { setShowPurge(false); setConfirm('') }} title="Free up space" size="md">
+        <div className="space-y-4">
+          <div className="flex items-start gap-2.5 p-3 rounded-lg" style={{ background: 'color-mix(in srgb, var(--err) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--err) 35%, transparent)' }}>
+            <AlertTriangle size={18} style={{ color: 'var(--err)' }} className="flex-shrink-0 mt-0.5" />
+            <p className="text-[13px] text-t2">This permanently deletes records. <b>Download a full backup first</b> — it cannot be undone. Table structure and user logins are preserved.</p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer" style={{ borderColor: scope === 'submissions' ? 'var(--brand-solid)' : 'var(--line)' }}>
+              <input type="radio" className="mt-0.5 accent-primary" checked={scope === 'submissions'} onChange={() => setScope('submissions')} />
+              <div>
+                <p className="text-[13px] font-semibold text-t">Clear submission history <span className="text-t4 font-normal">(recommended)</span></p>
+                <p className="text-[12px] text-t4">Deletes all submissions &amp; their results — the fast-growing data. Keeps users, problems, classes, notes, challenges.</p>
+              </div>
+            </label>
+            <label className="flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer" style={{ borderColor: scope === 'all_records' ? 'var(--err)' : 'var(--line)' }}>
+              <input type="radio" className="mt-0.5 accent-primary" checked={scope === 'all_records'} onChange={() => setScope('all_records')} />
+              <div>
+                <p className="text-[13px] font-semibold text-t">Clear ALL records</p>
+                <p className="text-[12px] text-t4">Wipes every table <b>except user accounts</b> (so logins still work). You'll lose problems, classes, notes too.</p>
+              </div>
+            </label>
+          </div>
+
+          <div>
+            <label className="label">Type <span className="font-mono" style={{ color: 'var(--err)' }}>DELETE</span> to confirm</label>
+            <input className="input" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="DELETE" />
+          </div>
+
+          <div className="flex gap-2">
+            <button className="btn-sm inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium text-white disabled:opacity-50"
+              style={{ background: 'var(--err)' }} disabled={confirm !== 'DELETE' || purging} onClick={purge}>
+              {purging ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Permanently clear records
+            </button>
+            <button className="btn-secondary btn-sm" onClick={() => { setShowPurge(false); setConfirm('') }}>Cancel</button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

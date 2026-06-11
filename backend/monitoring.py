@@ -86,6 +86,76 @@ def _which_version(cmd):
         return path, path
 
 
+def storage_checks(db):
+    """
+    Storage usage for the two places that can fill up on a small deploy:
+      • TiDB database  — summed table size vs the plan limit (default 5 GiB free tier)
+      • Render disk     — container filesystem usage (where uploads/temp live)
+    Each returns percent used; warn=True once it crosses the threshold (90%).
+    """
+    from sqlalchemy import text  # local import keeps monitoring import-light
+    WARN_AT = float(os.getenv("STORAGE_WARN_PERCENT", "80"))
+    checks = []
+
+    # ── TiDB database storage ───────────────────────────────────────────────
+    # TiDB (esp. Serverless) often reports data_length/index_length as 0 in
+    # information_schema (it's stats-derived). When that happens we fall back to
+    # a live row count and estimate bytes from it.
+    try:
+        rows = db.execute(text(
+            "SELECT table_name, COALESCE(data_length + index_length, 0), COALESCE(table_rows, 0) "
+            "FROM information_schema.tables "
+            "WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'"
+        )).fetchall()
+        byte_sum = float(sum(r[1] for r in rows))
+        total_rows = int(sum(r[2] for r in rows))
+
+        # TiDB Serverless usually leaves data_length/table_rows at ~0 (stats-derived),
+        # so when they look empty we count live rows — always accurate.
+        if total_rows == 0 and byte_sum < 64 * 1024:
+            total_rows = 0
+            for r in rows:
+                try:
+                    total_rows += int(db.execute(text(f"SELECT COUNT(*) FROM `{r[0]}`")).scalar() or 0)
+                except Exception:
+                    pass
+
+        est_bytes = total_rows * 1024.0            # ~1 KB/row estimate when sizes are unavailable
+        total_bytes = max(byte_sum, est_bytes)
+        note = None if byte_sum >= est_bytes and byte_sum > 0 else f"estimated from ~{total_rows:,} rows (TiDB doesn't expose exact size)"
+
+        used_mb = total_bytes / (1024 * 1024)
+        limit_mb = float(os.getenv("DB_STORAGE_LIMIT_MB", "5120"))  # TiDB Serverless free ≈ 5 GiB
+        pct = round(used_mb / limit_mb * 100, 1) if limit_mb else 0.0
+        checks.append({
+            "name": "Database storage (TiDB)", "kind": "db",
+            "used_mb": round(used_mb, 1), "limit_mb": round(limit_mb, 1),
+            "rows": total_rows, "percent": pct, "warn": pct >= WARN_AT, "note": note,
+        })
+    except Exception as e:  # noqa: BLE001
+        checks.append({"name": "Database storage (TiDB)", "kind": "db",
+                       "percent": 0.0, "warn": False, "error": str(e)[:140]})
+
+    # ── Render container disk ───────────────────────────────────────────────
+    try:
+        path = os.getenv("UPLOAD_DIR", "./uploads")
+        if not os.path.isdir(path):
+            path = "/"
+        du = shutil.disk_usage(path)
+        pct = round(du.used / du.total * 100, 1) if du.total else 0.0
+        checks.append({
+            "name": "Disk (Render)", "kind": "disk",
+            "used_mb": round(du.used / (1024 * 1024), 1),
+            "limit_mb": round(du.total / (1024 * 1024), 1),
+            "percent": pct, "warn": pct >= WARN_AT,
+        })
+    except Exception as e:  # noqa: BLE001
+        checks.append({"name": "Disk (Render)", "kind": "disk",
+                       "percent": 0.0, "warn": False, "error": str(e)[:140]})
+
+    return checks
+
+
 def run_checks(db_ok, db_detail):
     """Return a list of service checks. `critical` flips overall status to 'issues'."""
     checks = [{"name": "Database", "ok": db_ok, "critical": True, "detail": db_detail}]

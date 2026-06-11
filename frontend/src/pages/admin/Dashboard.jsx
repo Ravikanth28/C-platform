@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import {
   Users, FileText, Code2, FlaskConical,
-  CheckCircle, TrendingUp, Activity, Clock,
+  CheckCircle, TrendingUp, Activity, Clock, AlertTriangle, Database, HardDrive,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
@@ -37,6 +38,8 @@ export default function AdminDashboard() {
   if (!data)   return <p className="text-t3">Failed to load dashboard.</p>
 
   const { stats, recent_submissions, students } = data
+  const storage = data.storage || []
+  const storageAlerts = storage.filter((s) => s.warn)
 
   const pieData = [
     { name: 'Accepted', value: stats.accepted_submissions },
@@ -47,10 +50,48 @@ export default function AdminDashboard() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div>
-        <h1 className="h1">Dashboard</h1>
-        <p className="section-sub mt-1">Platform overview and analytics</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="h1">Dashboard</h1>
+          <p className="section-sub mt-1">Platform overview and analytics</p>
+        </div>
+        {/* Storage usage chips (always visible) */}
+        {storage.length > 0 && (
+          <div className="flex items-center gap-2">
+            {storage.map((s) => {
+              const Icon = s.kind === 'db' ? Database : HardDrive
+              const over = s.warn
+              const color = over ? 'var(--err)' : s.percent >= 75 ? 'var(--warn)' : 'var(--t3)'
+              return (
+                <Link key={s.name} to="../system"
+                  title={s.error ? s.error : `${s.used_mb} / ${s.limit_mb} MB`}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[12px]"
+                  style={{ borderColor: over ? 'color-mix(in srgb, var(--err) 40%, transparent)' : 'var(--line)', background: over ? 'color-mix(in srgb, var(--err) 10%, transparent)' : 'transparent' }}>
+                  <Icon size={13} style={{ color }} />
+                  <span className="text-t3">{s.kind === 'db' ? 'TiDB' : 'Disk'}</span>
+                  <span className="tabular font-semibold" style={{ color }}>{s.error ? '—' : `${s.percent}%`}</span>
+                </Link>
+              )
+            })}
+          </div>
+        )}
       </div>
+
+      {/* Storage warning badge — shows when any store crosses 90% */}
+      {storageAlerts.length > 0 && (
+        <div className="flex items-start gap-3 p-3.5 rounded-xl border"
+          style={{ borderColor: 'color-mix(in srgb, var(--err) 40%, transparent)', background: 'color-mix(in srgb, var(--err) 10%, transparent)' }}>
+          <AlertTriangle size={18} style={{ color: 'var(--err)' }} className="flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-semibold" style={{ color: 'var(--err)' }}>Storage almost full</p>
+            <p className="text-[12.5px] text-t2 mt-0.5">
+              {storageAlerts.map((s) => `${s.name} is at ${s.percent}% (${s.used_mb}/${s.limit_mb} MB)`).join(' · ')}.
+              {' '}Free up space or upgrade soon to avoid write failures.
+            </p>
+          </div>
+          <Link to="../system" className="btn-secondary btn-sm flex-shrink-0">View System</Link>
+        </div>
+      )}
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

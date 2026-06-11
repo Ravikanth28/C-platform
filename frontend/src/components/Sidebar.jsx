@@ -2,32 +2,34 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   LayoutDashboard, BookOpen, Code2, FlaskConical,
-  BarChart3, LogOut, X, GraduationCap, LineChart, Activity, Puzzle,
+  BarChart3, LogOut, X, GraduationCap, LineChart, Activity, Puzzle, BookMarked,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Logo from './ui/Logo'
 
 const adminNav = [
   { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/admin/lessons',   icon: BookMarked,      label: 'Lessons' },
   { to: '/admin/notes',     icon: BookOpen,        label: 'Notes' },
+  { to: '/admin/classroom', icon: GraduationCap,   label: 'Classroom' },
+  { to: '/admin/challenges', icon: Puzzle,         label: 'Challenges' },
   { to: '/admin/practice',  icon: Code2,           label: 'Practice Mode' },
   { to: '/admin/tests',     icon: FlaskConical,    label: 'Test Mode' },
-  { to: '/admin/challenges', icon: Puzzle,         label: 'Challenges' },
-  { to: '/admin/classroom', icon: GraduationCap,   label: 'Classroom' },
-  { to: '/admin/analytics', icon: LineChart,       label: 'Analytics' },
   { to: '/admin/reports',   icon: BarChart3,       label: 'Reports' },
+  { to: '/admin/analytics', icon: LineChart,       label: 'Analytics' },
   { to: '/admin/system',    icon: Activity,        label: 'System' },
 ]
 
 const studentNav = [
   { to: '/student/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/student/lessons',   icon: BookMarked,      label: 'Lessons' },
   { to: '/student/notes',     icon: BookOpen,        label: 'Notes' },
-  { to: '/student/practice',  icon: Code2,           label: 'Practice' },
-  { to: '/student/challenges', icon: Puzzle,         label: 'Challenges' },
-  { to: '/student/tests',     icon: FlaskConical,    label: 'Tests' },
   { to: '/student/classroom', icon: GraduationCap,   label: 'Classroom' },
-  { to: '/student/analytics', icon: LineChart,       label: 'Analytics' },
+  { to: '/student/challenges', icon: Puzzle,         label: 'Challenges' },
+  { to: '/student/practice',  icon: Code2,           label: 'Practice' },
+  { to: '/student/tests',     icon: FlaskConical,    label: 'Tests' },
   { to: '/student/reports',   icon: BarChart3,       label: 'Reports' },
+  { to: '/student/analytics', icon: LineChart,       label: 'Analytics' },
 ]
 
 export default function Sidebar({ open, onClose }) {

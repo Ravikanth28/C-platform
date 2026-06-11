@@ -57,17 +57,21 @@ except Exception as _mig_exc:
 
 
 def _seed_learn_content():
-    """Populate beginner challenges on first run (idempotent)."""
+    """Populate beginner challenges + interactive lessons on first run (idempotent)."""
     import logging
     import seed_challenges
+    import seed_lessons
     from database import SessionLocal
     db = SessionLocal()
     try:
         n = seed_challenges.seed_if_empty(db)
         if n:
             logging.info(f"Seeded {n} learn challenges")
+        m = seed_lessons.seed_if_empty(db)
+        if m:
+            logging.info(f"Seeded {m} lessons")
     except Exception as e:
-        logging.warning(f"challenge seed skipped: {e}")
+        logging.warning(f"learn-content seed skipped: {e}")
     finally:
         db.close()
 

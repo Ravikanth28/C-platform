@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 import models
 import schemas
 from auth import ALGORITHM, SECRET_KEY, get_admin_user, get_current_user
-from code_runner import _normalize, compile_code, judge_submission, run_once
+from code_runner import _normalize, compile_code, judge_submission, run_once, memcheck
 from database import get_db
 from interactive_runner import make_session
 
@@ -115,6 +115,12 @@ print("TRACE_JSON:" + json.dumps({"steps": steps, "error": err}))
 class VisualizeRequest(BaseModel):
     code: str
     custom_input: str = ""
+
+
+@router.post("/memcheck")
+def memory_check(payload: VisualizeRequest, _user: models.User = Depends(get_current_user)):
+    """Compile with AddressSanitizer/UBSan and report leaks, overflows, use-after-free."""
+    return memcheck(payload.code, payload.custom_input)
 
 
 def _poststate_locals(steps):

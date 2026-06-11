@@ -167,6 +167,7 @@ export default function CodingEnvironment() {
   const [bookmarked, setBookmarked]   = useState(false)
   const [showResult, setShowResult]   = useState(false)
   const [showVisualize, setShowVisualize] = useState(false)
+  const [memcheck, setMemcheck] = useState(null)   // null | 'loading' | result object
 
   const timerRef     = useRef(null)
   const startTimeRef = useRef(Date.now())
@@ -506,6 +507,15 @@ export default function CodingEnvironment() {
   const handleCopyCode = () => { navigator.clipboard.writeText(code); toast.success('Code copied!') }
 
   const handleVisualize = () => setShowVisualize(true)
+  const handleMemcheck = async () => {
+    setMemcheck('loading')
+    try {
+      const { data } = await api.post('/submissions/memcheck', { code, custom_input: visibleSamples[0]?.input_data || '' })
+      setMemcheck(data)
+    } catch {
+      setMemcheck({ status: 'Error', report: 'Memory check failed — is the backend running?', findings: [], clean: false })
+    }
+  }
 
   // expose latest values to the global keyboard-shortcut handler
   stateRef.current = { code, problemId, handleRun, handleSubmit }
@@ -580,6 +590,10 @@ export default function CodingEnvironment() {
     <EditorSettingsModal open={showSettings} prefs={prefs} setPrefs={setPrefs} onClose={() => setShowSettings(false)} />
     {showVisualize && (
       <VisualizeModal code={code} defaultInput={visibleSamples[0]?.input_data || ''} onClose={() => setShowVisualize(false)} />
+    )}
+
+    {memcheck && (
+      <MemCheckModal result={memcheck} onClose={() => setMemcheck(null)} onRerun={handleMemcheck} />
     )}
     <div ref={containerRef} className="flex flex-col h-screen bg-beige-pg text-t overflow-hidden">
 
@@ -778,6 +792,9 @@ export default function CodingEnvironment() {
                 )}
                 <button onClick={handleVisualize} className="btn-secondary btn-sm" title="Visualize code execution">
                   <Eye size={12} /> Visualize
+                </button>
+                <button onClick={handleMemcheck} disabled={memcheck === 'loading'} className="btn-secondary btn-sm" title="Check for memory leaks, buffer overflows & undefined behavior">
+                  <ShieldCheck size={12} /> {memcheck === 'loading' ? 'Checking…' : 'Memory check'}
                 </button>
                 {(() => {
                   const busy = runMode === 'console' ? runner.status === 'compiling' : running
@@ -1632,6 +1649,73 @@ function ArrayCells({ value, prevValue, accessed }) {
         <Cell key={i} v={v} i={i} acc={accessed.has(i)} changed={prevCells.length > 0 && String(prevCells[i]) !== String(v)} />
       ))}
     </div>
+  )
+}
+
+function MemCheckModal({ result, onClose, onRerun }) {
+  const loading = result === 'loading'
+  const r = loading ? null : result
+  const findingColor = (t) => t === 'leak' ? 'var(--warn)' : 'var(--err)'
+
+  return (
+    <Modal open onClose={onClose} title="Memory check" size="lg">
+      {loading ? (
+        <div className="py-10 flex items-center justify-center gap-2 text-t3">
+          <span className="w-4 h-4 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--brand)', borderTopColor: 'transparent' }} />
+          Compiling with AddressSanitizer &amp; running…
+        </div>
+      ) : r.status === 'Compilation Error' ? (
+        <div className="space-y-3">
+          <p className="text-[13px]" style={{ color: 'var(--err)' }}>{r.note || "Your code didn't compile, so it couldn't be checked."}</p>
+          <pre className="surface-inset border border-line rounded-lg p-3 text-[12px] font-mono whitespace-pre-wrap break-words max-h-72 overflow-auto" style={{ color: 'var(--err)' }}>{r.report}</pre>
+        </div>
+      ) : r.status !== 'ok' ? (
+        <p className="text-[13px] text-t3">{r.report || r.status}</p>
+      ) : r.clean ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2.5 p-3.5 rounded-xl" style={{ background: 'color-mix(in srgb, var(--ok) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--ok) 35%, transparent)' }}>
+            <ShieldCheck size={20} style={{ color: 'var(--ok)' }} />
+            <div>
+              <p className="text-[14px] font-semibold" style={{ color: 'var(--ok)' }}>No memory issues found</p>
+              <p className="text-[12px] text-t3">No leaks, buffer overflows, use-after-free, or undefined behavior on this input. Nice and clean. 👏</p>
+            </div>
+          </div>
+          {r.output && (
+            <div>
+              <p className="label">Program output</p>
+              <pre className="surface-inset border border-line rounded-lg p-3 text-[12.5px] font-mono whitespace-pre-wrap" style={{ color: 'var(--ok)' }}>{r.output}</pre>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-[13px] text-t2">{r.findings.length} issue{r.findings.length === 1 ? '' : 's'} found — fix these to write safe C:</p>
+          <div className="space-y-2">
+            {r.findings.map((f, i) => (
+              <div key={i} className="rounded-lg border p-3" style={{ borderColor: `color-mix(in srgb, ${findingColor(f.type)} 40%, transparent)`, background: `color-mix(in srgb, ${findingColor(f.type)} 9%, transparent)` }}>
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertTriangle size={14} style={{ color: findingColor(f.type) }} />
+                  <span className="text-[13px] font-semibold capitalize" style={{ color: findingColor(f.type) }}>{f.title}</span>
+                  {f.line && <span className="text-[11px] text-t4 ml-auto font-mono">line {f.line}</span>}
+                </div>
+                <p className="text-[12.5px] text-t2 leading-relaxed">{f.help}</p>
+              </div>
+            ))}
+          </div>
+          <details className="text-[12px]">
+            <summary className="cursor-pointer text-t4 hover:text-t3">Raw sanitizer report</summary>
+            <pre className="surface-inset border border-line rounded-lg p-3 mt-2 text-[11.5px] font-mono whitespace-pre-wrap break-words max-h-60 overflow-auto text-t3">{r.report}</pre>
+          </details>
+        </div>
+      )}
+
+      {!loading && (
+        <div className="flex gap-2 mt-4">
+          <button className="btn-primary btn-sm" onClick={onRerun}><ShieldCheck size={13} /> Re-check</button>
+          <button className="btn-secondary btn-sm" onClick={onClose}>Close</button>
+        </div>
+      )}
+    </Modal>
   )
 }
 
