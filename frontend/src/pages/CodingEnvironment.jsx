@@ -778,6 +778,7 @@ export default function CodingEnvironment() {
                 })
               }}
               options={{
+                automaticLayout: true,   // keep the editor sized to its container (fixes mobile/remount width)
                 fontSize: prefs.fontSize,
                 tabSize: prefs.tabSize,
                 fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
@@ -796,7 +797,7 @@ export default function CodingEnvironment() {
 
           {/* Run / self-check panel — never grades */}
           <div className="border-t border-line bg-surface-h flex-shrink-0">
-            <div className="flex items-center justify-between gap-2 pl-2 pr-2 h-11 border-b border-line">
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 pl-2 pr-2 min-h-[2.75rem] py-1 border-b border-line">
               <div className="flex items-center gap-1 min-w-0">
                 <RunSubTab dataTour="sample-tests" label="Sample Tests" active={runMode === 'samples'} onClick={() => setRunMode('samples')} />
                 <RunSubTab dataTour="console" label="Console" active={runMode === 'console'} onClick={() => setRunMode('console')} />
