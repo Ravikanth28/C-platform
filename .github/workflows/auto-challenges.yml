@@ -12,7 +12,7 @@ name: Auto-add challenges
 
 on:
   schedule:
-    - cron: '0 6 * * *'    # daily at 06:00 UTC
+    - cron: '0 */6 * * *'   # every 6 hours (the backend only generates when actually due)
   workflow_dispatch:
 
 jobs:
