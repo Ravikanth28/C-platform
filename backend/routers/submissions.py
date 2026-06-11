@@ -117,6 +117,32 @@ class VisualizeRequest(BaseModel):
     custom_input: str = ""
 
 
+def _poststate_locals(steps):
+    """
+    Both tracers capture a variable's value at LINE ENTRY (before the line runs),
+    so e.g. a scanf line shows the old/garbage value and the real value only lands
+    on the next step. Beginners expect "this line ran → here's the result", so we
+    display each step with the NEXT step's locals — but only when that next step is
+    in the SAME function frame (same func + call depth), otherwise a function call
+    would wrongly show the callee's variables on the caller's line.
+    """
+    if not steps:
+        return steps
+    n = len(steps)
+
+    def depth(s):
+        return len(s.get("stack") or [])
+
+    out = []
+    for i, s in enumerate(steps):
+        nxt = steps[i + 1] if i + 1 < n else None
+        if nxt is not None and nxt.get("func") == s.get("func") and depth(nxt) == depth(s):
+            out.append({**s, "locals": nxt.get("locals", s.get("locals"))})
+        else:
+            out.append(s)
+    return out
+
+
 @router.post("/visualize")
 def visualize(payload: VisualizeRequest, _user: models.User = Depends(get_current_user)):
     """
@@ -132,7 +158,10 @@ def visualize(payload: VisualizeRequest, _user: models.User = Depends(get_curren
         # No gdb on this host (e.g. Render native)? Use the gcc-only instrumentation tracer.
         if _sh.which("gdb") is None:
             from instrument_tracer import trace as _inst_trace
-            return _inst_trace(payload.code, payload.custom_input, tmp)
+            res = _inst_trace(payload.code, payload.custom_input, tmp)
+            if isinstance(res, dict) and res.get("steps"):
+                res["steps"] = _poststate_locals(res["steps"])
+            return res
 
         tmp_fwd = tmp.replace("\\", "/")
         src = _os.path.join(tmp, "sol.c")
@@ -181,7 +210,7 @@ def visualize(payload: VisualizeRequest, _user: models.User = Depends(get_curren
             msg = trace_err or (g.stderr[:300] if g.stderr else "Could not trace this program.")
             return {"status": "Error", "error": msg, "steps": [], "output": _normalize(prog_out)[:65536]}
 
-        return {"status": "ok", "steps": steps[:500], "output": _normalize(prog_out)[:65536]}
+        return {"status": "ok", "steps": _poststate_locals(steps)[:500], "output": _normalize(prog_out)[:65536]}
 
 
 @router.post("/run")

@@ -1644,6 +1644,7 @@ function VisualizeModal({ code: initialCode, defaultInput = '', onClose }) {
   const [speed, setSpeed]   = useState(900)
   const activeRef = useRef(null)
   const outRef = useRef(null)
+  const logRef = useRef(null)
   const lines = initialCode.split('\n')
 
   const steps = trace?.steps || []
@@ -1672,6 +1673,7 @@ function VisualizeModal({ code: initialCode, defaultInput = '', onClose }) {
 
   useEffect(() => { activeRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, [idx, trace])
   useEffect(() => { if (outRef.current) outRef.current.scrollTop = outRef.current.scrollHeight }, [idx])
+  useEffect(() => { logRef.current?.querySelector('[data-active]')?.scrollIntoView({ block: 'nearest' }) }, [idx, trace])
 
   useEffect(() => {
     const handler = (e) => {
@@ -1694,6 +1696,13 @@ function VisualizeModal({ code: initialCode, defaultInput = '', onClose }) {
   const isErr = trace && ['Compilation Error', 'NoGDB', 'Error', 'Timeout'].includes(trace.status)
   const stack = cur?.stack ? [...cur.stack].reverse() : []  // outermost (main) first
   const exp = cur ? explainStep(cur, prevLocals, lines[cur.line - 1]) : null
+  // Accumulated, line-by-line story of the run up to the current step.
+  const log = hasSteps
+    ? steps.slice(0, idx + 1).map((s, j) => ({
+        n: j, line: s.line,
+        exp: explainStep(s, j > 0 ? (steps[j - 1].locals || {}) : {}, lines[s.line - 1]),
+      }))
+    : []
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
@@ -1748,33 +1757,90 @@ function VisualizeModal({ code: initialCode, defaultInput = '', onClose }) {
         {/* Body */}
         <div className="flex flex-1 overflow-hidden">
 
-          {/* Code pane */}
-          <div className="w-[54%] border-r border-line overflow-auto bg-beige-pg">
-            <div className="min-h-full py-3">
-              {lines.map((line, i) => {
-                const lineNo = i + 1
-                const isCur = cur && cur.line === lineNo
-                const isNext = !isCur && nextStep && nextStep.line === lineNo
-                const bg = isCur ? 'var(--brandGhost)' : isNext ? 'color-mix(in srgb, var(--warn) 14%, transparent)' : 'transparent'
-                const bc = isCur ? 'var(--brand)' : isNext ? 'var(--warn)' : 'transparent'
-                return (
-                  <div key={i} ref={isCur ? activeRef : null} className="flex items-stretch border-l-2 transition-colors" style={{ background: bg, borderColor: bc }}>
-                    <span className="select-none text-right pr-4 pl-4 min-w-[3.5rem] text-[11px] leading-6 flex-shrink-0 font-mono"
-                      style={isCur ? { color: 'var(--brand)', fontWeight: 700 } : isNext ? { color: 'var(--warn)', fontWeight: 600 } : { color: 'var(--t4)' }}>
-                      {lineNo}
-                    </span>
-                    <pre className="leading-6 whitespace-pre flex-1 font-mono text-sm pr-6" style={{ color: (isCur || isNext) ? 'var(--t)' : 'var(--t2)' }}>
-                      {line || ' '}
-                    </pre>
-                    {isCur && <span className="mr-3 self-center text-[10px] font-sans font-semibold flex-shrink-0" style={{ color: 'var(--brand)' }}>▶ now</span>}
-                    {isNext && <span className="mr-3 self-center text-[10px] font-sans font-semibold flex-shrink-0" style={{ color: 'var(--warn)' }}>next</span>}
+          {/* Left column: code (scrolls) on top, output filling the space below */}
+          <div className="w-[54%] flex flex-col border-r border-line overflow-hidden">
+
+            {/* Code pane (scrollable) */}
+            <div className="flex-1 min-h-0 overflow-auto bg-beige-pg">
+              <div className="min-h-full py-3">
+                {lines.map((line, i) => {
+                  const lineNo = i + 1
+                  const isCur = cur && cur.line === lineNo
+                  const isNext = !isCur && nextStep && nextStep.line === lineNo
+                  const bg = isCur ? 'var(--brandGhost)' : isNext ? 'color-mix(in srgb, var(--warn) 14%, transparent)' : 'transparent'
+                  const bc = isCur ? 'var(--brand)' : isNext ? 'var(--warn)' : 'transparent'
+                  return (
+                    <div key={i} ref={isCur ? activeRef : null} className="flex items-stretch border-l-2 transition-colors" style={{ background: bg, borderColor: bc }}>
+                      <span className="select-none text-right pr-4 pl-4 min-w-[3.5rem] text-[11px] leading-6 flex-shrink-0 font-mono"
+                        style={isCur ? { color: 'var(--brand)', fontWeight: 700 } : isNext ? { color: 'var(--warn)', fontWeight: 600 } : { color: 'var(--t4)' }}>
+                        {lineNo}
+                      </span>
+                      <pre className="leading-6 whitespace-pre flex-1 font-mono text-sm pr-6" style={{ color: (isCur || isNext) ? 'var(--t)' : 'var(--t2)' }}>
+                        {line || ' '}
+                      </pre>
+                      {isCur && <span className="mr-3 self-center text-[10px] font-sans font-semibold flex-shrink-0" style={{ color: 'var(--brand)' }}>▶ now</span>}
+                      {isNext && <span className="mr-3 self-center text-[10px] font-sans font-semibold flex-shrink-0" style={{ color: 'var(--warn)' }}>next</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Output — fills the space under the code, shows input → output, scrolls */}
+            <div className="h-[42%] min-h-0 flex flex-col border-t border-line overflow-hidden">
+              <div className="px-4 py-2 bg-surface-h border-b border-line flex items-center justify-between flex-shrink-0 gap-2">
+                <span className="text-[11px] font-semibold text-t3 uppercase tracking-wide flex items-center gap-2"><Terminal size={12} style={{ color: 'var(--ok)' }} /> Output</span>
+                <div className="flex items-center gap-3 min-w-0">
+                  {input.trim() && (
+                    <span className="text-[11px] text-t4 truncate max-w-[180px]">input: <span className="font-mono text-t3">{input.trim().replace(/\s+/g, ' ')}</span></span>
+                  )}
+                  <span className="text-[11px] text-t4 tabular flex-shrink-0">{outLines.slice(0, revealed).filter(Boolean).length} line{revealed === 1 ? '' : 's'}</span>
+                  {atEnd && trace?.output && (
+                    <button onClick={() => navigator.clipboard.writeText(trace.output)} className="flex items-center gap-1 text-[11px] text-t4 hover:text-t3 transition-colors flex-shrink-0"><Copy size={10} /> Copy</button>
+                  )}
+                </div>
+              </div>
+              <div ref={outRef} className="flex-1 min-h-0 overflow-auto px-3 py-2 font-mono text-sm">
+                {isErr ? (
+                  <pre className="text-xs whitespace-pre-wrap break-words" style={{ color: 'var(--err)' }}>
+                    {trace.status === 'NoGDB' ? 'Step-visualizer needs gdb on the server (msys2: pacman -S mingw-w64-ucrt-x86_64-gdb), then retry.' : (trace.error || trace.status)}
+                  </pre>
+                ) : !hasSteps ? (
+                  trace?.output ? (
+                    <div>
+                      {trace.note && <p className="text-[12px] text-t4 font-sans mb-2">{trace.note}</p>}
+                      <pre className="whitespace-pre-wrap break-words" style={{ color: 'var(--ok)' }}>{trace.output}</pre>
+                    </div>
+                  ) : (
+                    <p className="text-[13px] text-t4 font-sans">{loading ? 'Tracing…' : 'Output appears here as each printf runs.'}</p>
+                  )
+                ) : (
+                  <div className="leading-relaxed">
+                    {/* input → output summary once the run finishes (the "maths" view) */}
+                    {atEnd && trace?.output && (
+                      <div className="mb-2 px-2.5 py-1.5 rounded-lg font-mono text-[12.5px] whitespace-pre-wrap break-words"
+                        style={{ background: 'var(--brandGhost)', color: 'var(--brand)', border: '1px solid color-mix(in srgb, var(--brand) 30%, transparent)' }}>
+                        {input.trim() && <span className="text-t3">{input.trim().replace(/\s+/g, ' ')}{'  →  '}</span>}
+                        {(trace.output || '').trim().replace(/\s+/g, ' ')}
+                      </div>
+                    )}
+                    {outLines.slice(0, revealed).map((ln, i, arr) => {
+                      const fresh = i === arr.length - 1 && cur && PRINT_RE.test(lines[cur.line - 1] || '')
+                      return (
+                        <div key={i} className="px-2 py-0.5 rounded whitespace-pre-wrap break-words transition-colors"
+                          style={fresh ? { background: 'color-mix(in srgb, var(--ok) 20%, transparent)', color: 'var(--ok)', fontWeight: 600 } : { color: 'var(--ok)' }}>
+                          {ln === '' ? ' ' : ln}
+                        </div>
+                      )
+                    })}
+                    {!atEnd && <span className="animate-pulse px-2" style={{ color: 'var(--brand)' }}>▋</span>}
                   </div>
-                )
-              })}
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Right pane */}
+          {/* Right column: stdin + explanation + call stack / variables */}
           <div className="w-[46%] flex flex-col overflow-hidden bg-beige-pg">
 
             {/* stdin */}
@@ -1788,21 +1854,40 @@ function VisualizeModal({ code: initialCode, defaultInput = '', onClose }) {
                 className="w-full h-12 bg-beige-pg px-4 py-1.5 text-sm text-t2 font-mono resize-none focus:outline-none placeholder-t4 border-0" />
             </div>
 
-            {/* Explanation */}
-            {hasSteps && exp && (
-              <div className="flex-shrink-0 px-4 py-2.5 border-b border-line" style={{ background: 'color-mix(in srgb, var(--warn) 9%, transparent)' }}>
-                <p className="text-[13px] text-t2 leading-snug">
-                  <span className="font-semibold" style={{ color: 'var(--warn)' }}>Line {cur.line}: </span>
-                  {exp.what}
-                </p>
-                {exp.changes.length > 0 && (
-                  <p className="text-[12px] mt-1 font-mono" style={{ color: 'var(--brand)' }}>→ {exp.changes.join(' · ')}</p>
-                )}
+            {/* Execution log — accumulates every step so the whole run reads top-to-bottom */}
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden border-b border-line">
+              <div className="px-4 py-2 bg-surface-h border-b border-line flex items-center justify-between flex-shrink-0">
+                <span className="text-[11px] font-semibold text-t3 uppercase tracking-wide">Execution log</span>
+                {hasSteps && <span className="text-[10px] text-t4 tabular">step {idx + 1}/{steps.length}</span>}
               </div>
-            )}
+              <div ref={logRef} className="flex-1 min-h-0 overflow-auto p-2 space-y-1">
+                {!hasSteps ? (
+                  <p className="text-[13px] text-t4 px-1">{loading ? 'Tracing…' : 'Press Run, then Play — every step is logged here so you can read the whole program line by line. Click any line to jump to it.'}</p>
+                ) : log.map((row) => {
+                  const active = row.n === idx
+                  return (
+                    <button key={row.n} data-active={active || undefined}
+                      onClick={() => { setPlaying(false); setIdx(row.n) }}
+                      className="w-full text-left rounded-lg border px-2.5 py-1.5 transition-colors"
+                      style={active
+                        ? { borderColor: 'color-mix(in srgb, var(--brand) 45%, transparent)', background: 'var(--brandGhost)' }
+                        : { borderColor: 'transparent', background: 'transparent' }}>
+                      <div className="flex items-baseline gap-2">
+                        <span className="font-mono text-[10px] tabular flex-shrink-0 px-1 rounded"
+                          style={{ color: active ? 'var(--brand)' : 'var(--t4)', background: active ? 'color-mix(in srgb, var(--brand) 15%, transparent)' : 'var(--beige-pill)' }}>L{row.line}</span>
+                        <span className="text-[12.5px] leading-snug" style={{ color: active ? 'var(--t)' : 'var(--t3)' }}>{row.exp.what}</span>
+                      </div>
+                      {row.exp.changes.length > 0 && (
+                        <div className="font-mono text-[11.5px] mt-0.5 pl-7" style={{ color: 'var(--brand)' }}>→ {row.exp.changes.join(' · ')}</div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
 
-            {/* Call stack + Variables */}
-            <div className="flex-1 flex overflow-hidden border-b border-line">
+            {/* Live state: Call stack + Variables (current step) */}
+            <div className="h-[42%] min-h-0 flex overflow-hidden">
               {/* Call stack */}
               <div className="w-[38%] flex flex-col overflow-hidden border-r border-line">
                 <div className="px-3 py-2 bg-surface-h border-b border-line flex-shrink-0">
@@ -1861,48 +1946,6 @@ function VisualizeModal({ code: initialCode, defaultInput = '', onClose }) {
                     </div>
                   )}
                 </div>
-              </div>
-            </div>
-
-            {/* Output */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="px-4 py-2 bg-surface-h border-b border-line flex items-center justify-between flex-shrink-0">
-                <span className="text-[11px] font-semibold text-t3 uppercase tracking-wide flex items-center gap-2"><Terminal size={12} style={{ color: 'var(--ok)' }} /> Output</span>
-                <div className="flex items-center gap-3">
-                  <span className="text-[11px] text-t4 tabular">{outLines.slice(0, revealed).filter(Boolean).length} line{revealed === 1 ? '' : 's'}</span>
-                  {atEnd && trace?.output && (
-                    <button onClick={() => navigator.clipboard.writeText(trace.output)} className="flex items-center gap-1 text-[11px] text-t4 hover:text-t3 transition-colors"><Copy size={10} /> Copy</button>
-                  )}
-                </div>
-              </div>
-              <div ref={outRef} className="flex-1 overflow-auto px-3 py-2 font-mono text-sm">
-                {isErr ? (
-                  <pre className="text-xs whitespace-pre-wrap break-words" style={{ color: 'var(--err)' }}>
-                    {trace.status === 'NoGDB' ? 'Step-visualizer needs gdb on the server (msys2: pacman -S mingw-w64-ucrt-x86_64-gdb), then retry.' : (trace.error || trace.status)}
-                  </pre>
-                ) : !hasSteps ? (
-                  trace?.output ? (
-                    <div>
-                      {trace.note && <p className="text-[12px] text-t4 font-sans mb-2">{trace.note}</p>}
-                      <pre className="whitespace-pre-wrap break-words" style={{ color: 'var(--ok)' }}>{trace.output}</pre>
-                    </div>
-                  ) : (
-                    <p className="text-[13px] text-t4 font-sans">{loading ? 'Tracing…' : 'Output appears here as each printf runs.'}</p>
-                  )
-                ) : (
-                  <div className="leading-relaxed">
-                    {outLines.slice(0, revealed).map((ln, i, arr) => {
-                      const fresh = i === arr.length - 1 && cur && PRINT_RE.test(lines[cur.line - 1] || '')
-                      return (
-                        <div key={i} className="px-2 py-0.5 rounded whitespace-pre-wrap break-words transition-colors"
-                          style={fresh ? { background: 'color-mix(in srgb, var(--ok) 20%, transparent)', color: 'var(--ok)', fontWeight: 600 } : { color: 'var(--ok)' }}>
-                          {ln === '' ? ' ' : ln}
-                        </div>
-                      )
-                    })}
-                    {!atEnd && <span className="animate-pulse px-2" style={{ color: 'var(--brand)' }}>▋</span>}
-                  </div>
-                )}
               </div>
             </div>
           </div>
