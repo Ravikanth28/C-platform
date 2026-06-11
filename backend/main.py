@@ -92,10 +92,15 @@ app = FastAPI(
 )
 
 # ── CORS ───────────────────────────────────────────────────────────────────
+# FRONTEND_URL may hold one or more comma-separated origins. Trailing slashes are
+# stripped (the browser's Origin header never has one — a mismatch silently blocks
+# every request). If unset, fall back to allowing any origin WITHOUT credentials
+# (auth uses a Bearer header, not cookies) so previews/dev still work.
+_origins = [o.strip().rstrip("/") for o in (os.getenv("FRONTEND_URL") or "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("FRONTEND_URL")],
-    allow_credentials=True,
+    allow_origins=_origins or ["*"],
+    allow_credentials=bool(_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )

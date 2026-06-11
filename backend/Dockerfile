@@ -1,10 +1,14 @@
 # Backend image with the C toolchain the platform needs:
-#   gcc  -> compile & run / judge submissions
-#   gdb  -> step-by-step Code Visualizer trace
+#   gcc       -> compile & run / judge submissions
+#   libc6-dev -> the C standard library headers (stdio.h, stdlib.h, math.h, …)
+#   gdb       -> step-by-step Code Visualizer trace
+# NOTE: with --no-install-recommends, gcc does NOT pull in libc6-dev, so it must
+# be listed explicitly — otherwise compiles fail with "stdio.h: No such file".
 FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc \
+        libc6-dev \
         gdb \
     && rm -rf /var/lib/apt/lists/*
 
