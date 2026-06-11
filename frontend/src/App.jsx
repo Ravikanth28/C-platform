@@ -13,8 +13,10 @@ import AdminReports    from './pages/admin/Reports'
 import AdminSystem     from './pages/admin/System'
 import AdminChallenges from './pages/admin/Challenges'
 import AdminLessons    from './pages/admin/Lessons'
+import AdminStudents   from './pages/admin/Students'
 import Classroom       from './pages/Classroom'
 import Analytics       from './pages/Analytics'
+import Profile         from './pages/Profile'
 
 import StudentDashboard from './pages/student/Dashboard'
 import StudentNotes     from './pages/student/Notes'
@@ -53,6 +55,8 @@ export default function App() {
         <Route path="classroom" element={<Classroom />} />
         <Route path="challenges" element={<AdminChallenges />} />
         <Route path="lessons"   element={<AdminLessons />} />
+        <Route path="students"  element={<AdminStudents />} />
+        <Route path="profile"   element={<Profile />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="reports"   element={<AdminReports />} />
         <Route path="system"    element={<AdminSystem />} />
@@ -66,6 +70,7 @@ export default function App() {
         <Route path="notes"     element={<StudentNotes />} />
         <Route path="practice"  element={<StudentPractice />} />
         <Route path="challenges" element={<Challenges />} />
+        <Route path="profile"   element={<Profile />} />
         <Route path="tests"     element={<StudentTest />} />
         <Route path="classroom" element={<Classroom />} />
         <Route path="analytics" element={<Analytics />} />

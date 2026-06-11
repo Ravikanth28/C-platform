@@ -76,3 +76,37 @@ def login(payload: schemas.UserLogin, db: Session = Depends(get_db)):
 @router.get("/me", response_model=schemas.UserResponse)
 async def me(current_user: models.User = Depends(get_current_user)):
     return current_user
+
+
+@router.put("/profile", response_model=schemas.UserResponse)
+def update_profile(payload: schemas.ProfileUpdate, db: Session = Depends(get_db),
+                   current_user: models.User = Depends(get_current_user)):
+    """Student/admin updates their own name, email and phone."""
+    if payload.full_name is not None:
+        current_user.full_name = payload.full_name.strip() or None
+    if payload.phone is not None:
+        current_user.phone = payload.phone.strip() or None
+    if payload.email is not None:
+        new_email = payload.email.strip().lower()
+        if new_email and new_email != (current_user.email or "").lower():
+            taken = db.query(models.User).filter(
+                models.User.email == new_email, models.User.id != current_user.id).first()
+            if taken:
+                raise HTTPException(400, "That email is already in use")
+            current_user.email = new_email
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
+@router.post("/change-password")
+def change_password(payload: schemas.PasswordChange, db: Session = Depends(get_db),
+                    current_user: models.User = Depends(get_current_user)):
+    """Change your own password (must supply the current one)."""
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(400, "Current password is incorrect")
+    if len(payload.new_password) < 6:
+        raise HTTPException(400, "New password must be at least 6 characters")
+    current_user.password_hash = get_password_hash(payload.new_password)
+    db.commit()
+    return {"detail": "Password changed"}

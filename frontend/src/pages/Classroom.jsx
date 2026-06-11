@@ -70,6 +70,7 @@ function AdminAssignments() {
 
   const openDrill = async (a) => {
     setDrill(a); setDrillData(null)
+    load()   // refresh class member counts too (picks up recent self-enrolments)
     try { const { data } = await api.get(`/classroom/assignments/${a.id}/progress`); setDrillData(data) }
     catch { setDrillData({ error: true }) }
   }
@@ -138,7 +139,10 @@ function AdminAssignments() {
       <div className="card lg:col-span-1 flex flex-col">
         <div className="flex items-center justify-between mb-3">
           <h3 className="h3">Classes</h3>
-          <button className="btn-secondary btn-sm" onClick={() => setShowClass(true)}><Plus size={13} /> New</button>
+          <div className="flex items-center gap-1.5">
+            <button className="btn-secondary btn-sm" onClick={load} title="Refresh — pick up students who just joined"><RefreshCw size={13} /></button>
+            <button className="btn-secondary btn-sm" onClick={() => setShowClass(true)}><Plus size={13} /> New</button>
+          </div>
         </div>
         {classes.length === 0 ? (
           <div className="text-[13px] text-t4 space-y-3">

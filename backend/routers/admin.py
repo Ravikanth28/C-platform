@@ -260,6 +260,25 @@ def list_students(
     )
 
 
+@router.post("/students/{user_id}/reset-password")
+def admin_reset_password(
+    user_id: int,
+    payload: schemas.AdminPasswordReset,
+    db: Session = Depends(get_db),
+    _admin=Depends(get_admin_user),
+):
+    """Admin sets a new password for a student who forgot theirs."""
+    from auth import get_password_hash
+    if len(payload.new_password) < 6:
+        raise HTTPException(400, "Password must be at least 6 characters")
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+    user.password_hash = get_password_hash(payload.new_password)
+    db.commit()
+    return {"detail": f"Password reset for {user.username}"}
+
+
 @router.delete("/students/{user_id}")
 def delete_student(
     user_id: int,

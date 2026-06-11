@@ -33,6 +33,7 @@ def _lightweight_migrate():
         "ALTER TABLE classes ADD COLUMN invite_code VARCHAR(12)",
         "ALTER TABLE submissions ADD COLUMN feedback TEXT",
         "ALTER TABLE problems ADD COLUMN starter_code TEXT",
+        "ALTER TABLE users ADD COLUMN phone VARCHAR(20)",
     ]
     with engine.begin() as conn:
         for s in stmts:

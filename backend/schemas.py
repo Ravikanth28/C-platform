@@ -26,12 +26,28 @@ class UserResponse(BaseModel):
     username: str
     email: str
     full_name: Optional[str]
+    phone: Optional[str] = None
     role: str
     is_active: bool
     avatar_color: str
     created_at: datetime.datetime
 
     model_config = {"from_attributes": True}
+
+
+class ProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class AdminPasswordReset(BaseModel):
+    new_password: str
 
 
 class Token(BaseModel):

@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   LayoutDashboard, BookOpen, Code2, FlaskConical,
-  BarChart3, LogOut, X, GraduationCap, LineChart, Activity, Puzzle, BookMarked,
+  BarChart3, LogOut, X, GraduationCap, LineChart, Activity, Puzzle, BookMarked, Users,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Logo from './ui/Logo'
@@ -12,6 +12,7 @@ const adminNav = [
   { to: '/admin/lessons',   icon: BookMarked,      label: 'Lessons' },
   { to: '/admin/notes',     icon: BookOpen,        label: 'Notes' },
   { to: '/admin/classroom', icon: GraduationCap,   label: 'Classroom' },
+  { to: '/admin/students',  icon: Users,           label: 'Students' },
   { to: '/admin/challenges', icon: Puzzle,         label: 'Challenges' },
   { to: '/admin/practice',  icon: Code2,           label: 'Practice Mode' },
   { to: '/admin/tests',     icon: FlaskConical,    label: 'Test Mode' },
@@ -96,7 +97,12 @@ export default function Sidebar({ open, onClose }) {
         {/* User */}
         <div className="px-2.5 py-3 flex-shrink-0 border-t border-beige-b">
           {open && user && (
-            <div className="flex items-center gap-2.5 px-2 py-2 mb-1 rounded-lg bg-beige-pill">
+            <NavLink
+              to={`/${user.role}/profile`}
+              onClick={() => { if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose() }}
+              className="flex items-center gap-2.5 px-2 py-2 mb-1 rounded-lg bg-beige-pill hover:shadow-katonic-sm transition-shadow"
+              title="Edit profile"
+            >
               <div
                 className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 font-serif"
                 style={{ background: user.avatar_color || 'var(--brand-solid)' }}
@@ -107,7 +113,7 @@ export default function Sidebar({ open, onClose }) {
                 <p className="text-[13px] font-semibold text-t truncate">{user.full_name || user.username}</p>
                 <p className="text-[11px] text-t4 truncate">{user.email}</p>
               </div>
-            </div>
+            </NavLink>
           )}
           <button onClick={handleLogout} className="sidebar-item-inactive w-full" title={!open ? 'Sign out' : undefined}>
             <LogOut size={17} className="flex-shrink-0" />

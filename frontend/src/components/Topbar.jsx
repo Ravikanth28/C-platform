@@ -1,6 +1,7 @@
 import { PanelLeft } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import ThemeToggle from './ui/ThemeToggle'
+import Breadcrumb from './ui/Breadcrumb'
 
 export default function Topbar({ onMenuClick }) {
   const { user } = useAuth()
@@ -8,19 +9,16 @@ export default function Topbar({ onMenuClick }) {
 
   return (
     <header className="flex items-center justify-between gap-3 h-12 px-4 lg:px-6 flex-shrink-0 bg-surface border-b border-line">
-      {/* Left: collapse + scope chip */}
+      {/* Left: collapse + breadcrumb */}
       <div className="flex items-center gap-3 min-w-0">
         <button
           onClick={onMenuClick}
-          className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-t3 hover:text-t hover:bg-surface-h transition-colors"
+          className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-t3 hover:text-t hover:bg-surface-h transition-colors flex-shrink-0"
           aria-label="Toggle sidebar"
         >
           <PanelLeft size={17} />
         </button>
-        <span className="scope-chip">
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--ok)' }} />
-          {user?.role === 'admin' ? 'Admin' : 'Practice'}
-        </span>
+        <Breadcrumb />
       </div>
 
       {/* Right: theme + user */}
