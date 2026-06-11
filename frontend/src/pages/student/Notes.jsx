@@ -63,11 +63,14 @@ export default function StudentNotes() {
           <input className="input pl-8" placeholder="Search notes…" value={search}
             onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <div className="flex gap-2">
-          {[['All', ''], ['PDF', 'pdf'], ['DOCX', 'docx'], ['YouTube', 'youtube'], ['Link', 'link']].map(([label, val]) => (
-            <button key={val} onClick={() => setTypeFilter(val)}
-              className={typeFilter === val ? 'tab-active' : 'tab-inactive'}>{label}</button>
-          ))}
+        <div className="flex gap-2 flex-wrap">
+          {[['All', ''], ['PDF', 'pdf'], ['DOCX', 'docx'], ['YouTube', 'youtube'], ['Link', 'link']].map(([label, val]) => {
+            const n = val ? notes.filter(x => x.upload_type === val).length : notes.length
+            return (
+              <button key={val} onClick={() => setTypeFilter(val)}
+                className={typeFilter === val ? 'tab-active' : 'tab-inactive'}>{label} <span className="tabular opacity-70">{n}</span></button>
+            )
+          })}
         </div>
       </div>
 

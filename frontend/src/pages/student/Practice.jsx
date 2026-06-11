@@ -54,10 +54,13 @@ export default function StudentPractice() {
             onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="flex gap-2">
-          {[['All', ''], ['Easy', 'easy'], ['Medium', 'medium'], ['Hard', 'hard']].map(([label, val]) => (
-            <button key={val} onClick={() => setDifficulty(val)}
-              className={difficulty === val ? 'tab-active' : 'tab-inactive'}>{label}</button>
-          ))}
+          {[['All', ''], ['Easy', 'easy'], ['Medium', 'medium'], ['Hard', 'hard']].map(([label, val]) => {
+            const n = val ? problems.filter(p => p.difficulty === val).length : problems.length
+            return (
+              <button key={val} onClick={() => setDifficulty(val)}
+                className={difficulty === val ? 'tab-active' : 'tab-inactive'}>{label} <span className="tabular opacity-70">{n}</span></button>
+            )
+          })}
         </div>
       </div>
 

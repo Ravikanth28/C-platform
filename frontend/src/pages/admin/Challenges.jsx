@@ -5,6 +5,7 @@ import api from '../../api/client'
 import { PageLoader } from '../../components/ui/LoadingSpinner'
 import { DifficultyBadge } from '../../components/ui/Badge'
 import Modal from '../../components/ui/Modal'
+import CountBar, { diffStats } from '../../components/ui/CountBar'
 
 const TOPICS = [
   ['basics', 'Basics & I/O'], ['conditionals', 'Conditionals'], ['loops', 'Loops'],
@@ -102,10 +103,18 @@ export default function AdminChallenges() {
         </div>
       </div>
 
-      <div className="flex gap-2">
-        {[['All', ''], ['Predict', 'predict'], ['Fix the Bug', 'fixbug']].map(([l, v]) => (
-          <button key={v} onClick={() => setFilter(v)} className={filter === v ? 'tab-active' : 'tab-inactive'}>{l}</button>
-        ))}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex gap-2">
+          {[['All', '', items.length],
+            ['Predict', 'predict', items.filter(c => c.kind === 'predict').length],
+            ['Fix the Bug', 'fixbug', items.filter(c => c.kind === 'fixbug').length]].map(([l, v, n]) => (
+            <button key={v} onClick={() => setFilter(v)} className={filter === v ? 'tab-active' : 'tab-inactive'}>
+              {l} <span className="tabular opacity-70">{n}</span>
+            </button>
+          ))}
+        </div>
+        <span className="text-t4">·</span>
+        <CountBar stats={diffStats(items)} />
       </div>
 
       {shown.length === 0 ? (

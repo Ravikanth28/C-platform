@@ -5,6 +5,7 @@ import api from '../../api/client'
 import Modal          from '../../components/ui/Modal'
 import { PageLoader } from '../../components/ui/LoadingSpinner'
 import { DifficultyBadge } from '../../components/ui/Badge'
+import CountBar, { diffStats } from '../../components/ui/CountBar'
 
 const EMPTY_TC = { input_data: '', expected_output: '', is_hidden: false }
 
@@ -352,6 +353,7 @@ export default function PracticeMode() {
             {showInactive ? 'Hide' : 'Show'} inactive ({inactiveCount})
           </button>
         )}
+        <CountBar stats={[{ label: 'Total', count: problems.length }, ...diffStats(problems)]} />
       </div>
 
       {filtered.length === 0 ? (

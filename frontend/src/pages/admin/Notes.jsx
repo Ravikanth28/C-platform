@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import api, { getFileUrl } from '../../api/client'
 import Modal           from '../../components/ui/Modal'
 import { PageLoader }  from '../../components/ui/LoadingSpinner'
+import CountBar        from '../../components/ui/CountBar'
 
 const TYPE_ICONS = {
   pdf:     <FileText size={16} style={{ color: 'var(--err)' }} />,
@@ -144,6 +145,13 @@ export default function AdminNotes() {
             <Trash2 size={14} /> Delete ({selected.size})
           </button>
         )}
+        <CountBar stats={[
+          { label: 'Total', count: notes.length },
+          { label: 'PDF', count: notes.filter(n => n.upload_type === 'pdf').length },
+          { label: 'Docs', count: notes.filter(n => n.upload_type === 'docx').length },
+          { label: 'Video', count: notes.filter(n => n.upload_type === 'youtube').length },
+          { label: 'Links', count: notes.filter(n => n.upload_type === 'link').length },
+        ]} />
       </div>
 
       {/* Notes grid */}

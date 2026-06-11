@@ -5,6 +5,7 @@ import { format, isPast, isFuture } from 'date-fns'
 import api from '../../api/client'
 import { PageLoader } from '../../components/ui/LoadingSpinner'
 import { DifficultyBadge, StatusBadge } from '../../components/ui/Badge'
+import CountBar, { diffStats } from '../../components/ui/CountBar'
 
 function TestStatusBadge({ problem }) {
   const now = new Date()
@@ -56,6 +57,10 @@ export default function StudentTestMode() {
           </p>
         </div>
       </div>
+
+      {problems.length > 0 && (
+        <CountBar stats={[{ label: 'Total', count: problems.length }, ...diffStats(problems)]} />
+      )}
 
       {problems.length === 0 ? (
         <div className="card text-center py-16">
