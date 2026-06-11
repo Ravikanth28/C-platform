@@ -529,10 +529,15 @@ async def cron_auto_assignment(key: str = "", db: Session = Depends(get_db)):
     if not creator:
         admin = db.query(models.User).filter(models.User.role == models.UserRole.admin).first()
         creator = admin.id if admin else None
-    a = await _ai_make_assignment(db, int(cid), creator)
-    _ameta_set(db, "assignment_last_auto", now.isoformat())
-    db.commit()
-    return {"detail": "generated" if a else "generation produced nothing", "assignment_id": a.id if a else None}
+    try:
+        a = await _ai_make_assignment(db, int(cid), creator)
+    except Exception as ex:  # noqa: BLE001 — graceful, retry next run
+        return {"detail": "generation failed (will retry next run)", "error": str(ex)[:200]}
+    if a:                             # only advance last_run on success
+        _ameta_set(db, "assignment_last_auto", now.isoformat())
+        db.commit()
+    return {"detail": "generated" if a else "no problem produced (will retry)",
+            "assignment_id": a.id if a else None}
 
 
 # ──────────────────────────── student view ─────────────────────────────────

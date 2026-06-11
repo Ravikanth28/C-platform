@@ -484,7 +484,12 @@ async def cron_auto_challenges(key: str = "", db: Session = Depends(get_db)):
         except Exception:
             pass
 
-    created = await _ai_make_challenges(db)
-    _meta_set(db, "challenge_last_auto", now.isoformat())
-    db.commit()
-    return {"detail": "generated", "count": len(created)}
+    try:
+        created = await _ai_make_challenges(db)
+    except Exception as ex:  # noqa: BLE001 — don't 500 the cron; report and retry next run
+        return {"detail": "generation failed (will retry next run)", "error": str(ex)[:200]}
+    if created:                       # only advance last_run on success, so failures retry
+        _meta_set(db, "challenge_last_auto", now.isoformat())
+        db.commit()
+    return {"detail": "generated" if created else "no challenges produced (will retry)",
+            "count": len(created or [])}
