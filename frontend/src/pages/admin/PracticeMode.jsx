@@ -12,7 +12,7 @@ function ProblemForm({ initial, onSave, onCancel, isTest = false }) {
   const [step, setStep] = useState(1)
   const [form, setForm] = useState(
     initial || {
-      title: '', description: '', topics: '', difficulty: 'medium',
+      title: '', description: '', topics: '', starter_code: '', difficulty: 'medium',
       duration: 60, is_for_all: true, assigned_user_ids: '',
       start_time: '', end_time: '',
       tab_switch_detect: false, copy_paste_disable: false,
@@ -97,6 +97,11 @@ function ProblemForm({ initial, onSave, onCancel, isTest = false }) {
             <label className="label">Description *</label>
             <textarea className="input resize-none" rows={5} value={form.description} onChange={set('description')}
               placeholder="Problem statement, examples, constraints…" required />
+          </div>
+          <div>
+            <label className="label">Starter code <span className="text-t4 font-normal">(optional — scaffolds the editor with a template / TODOs for beginners)</span></label>
+            <textarea className="input font-mono text-[13px] resize-y" rows={5} value={form.starter_code || ''} onChange={set('starter_code')}
+              placeholder={'#include <stdio.h>\n\nint main() {\n    // TODO: read N, then print 1..N\n    return 0;\n}'} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

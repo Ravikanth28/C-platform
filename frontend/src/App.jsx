@@ -11,6 +11,7 @@ import AdminPractice   from './pages/admin/PracticeMode'
 import AdminTest       from './pages/admin/TestMode'
 import AdminReports    from './pages/admin/Reports'
 import AdminSystem     from './pages/admin/System'
+import AdminChallenges from './pages/admin/Challenges'
 import Classroom       from './pages/Classroom'
 import Analytics       from './pages/Analytics'
 
@@ -19,6 +20,7 @@ import StudentNotes     from './pages/student/Notes'
 import StudentPractice  from './pages/student/Practice'
 import StudentTest      from './pages/student/TestMode'
 import StudentReports   from './pages/student/Reports'
+import Challenges       from './pages/student/Challenges'
 
 import CodingEnvironment from './pages/CodingEnvironment'
 
@@ -47,6 +49,7 @@ export default function App() {
         <Route path="practice"  element={<AdminPractice />} />
         <Route path="tests"     element={<AdminTest />} />
         <Route path="classroom" element={<Classroom />} />
+        <Route path="challenges" element={<AdminChallenges />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="reports"   element={<AdminReports />} />
         <Route path="system"    element={<AdminSystem />} />
@@ -58,6 +61,7 @@ export default function App() {
         <Route path="dashboard" element={<StudentDashboard />} />
         <Route path="notes"     element={<StudentNotes />} />
         <Route path="practice"  element={<StudentPractice />} />
+        <Route path="challenges" element={<Challenges />} />
         <Route path="tests"     element={<StudentTest />} />
         <Route path="classroom" element={<Classroom />} />
         <Route path="analytics" element={<Analytics />} />

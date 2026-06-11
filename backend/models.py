@@ -113,6 +113,7 @@ class Problem(Base):
     title = Column(String(200), nullable=False)
     description = Column(Text)
     topics = Column(String(500))
+    starter_code = Column(Text)           # scaffolded template loaded into the editor
     mode = Column(Enum(ProblemMode), nullable=False)
     difficulty = Column(String(20), default="medium")
     created_by = Column(Integer, ForeignKey("users.id"))
@@ -265,3 +266,24 @@ class AssignmentProblem(Base):
 
     assignment = relationship("Assignment", back_populates="problems")
     problem = relationship("Problem")
+
+
+# ──────────────────────────── Learn challenges ─────────────────────────────
+# Quick, fun skill-builders that aren't full judge problems:
+#   kind="predict" → student predicts a snippet's stdout
+#   kind="fixbug"  → student repairs buggy code until it produces expected_output
+
+class Challenge(Base):
+    __tablename__ = "challenges"
+
+    id = Column(Integer, primary_key=True, index=True)
+    kind = Column(String(12), nullable=False)          # predict | fixbug
+    title = Column(String(200), nullable=False)
+    topic = Column(String(40))                          # canonical topic key
+    difficulty = Column(String(20), default="easy")
+    snippet = Column(Text, nullable=False)              # predict: code shown; fixbug: buggy starter
+    test_input = Column(Text, default="")               # stdin fed when running (fixbug)
+    expected_output = Column(Text, default="")          # correct stdout
+    explanation = Column(Text, default="")              # revealed after answering
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)

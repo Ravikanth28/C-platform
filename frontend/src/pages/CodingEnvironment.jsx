@@ -20,6 +20,7 @@ import { initVimMode } from 'monaco-vim'
 import useInteractiveRun from '../hooks/useInteractiveRun'
 import EditorTour from '../components/ui/EditorTour'
 import Markdown from '../components/ui/Markdown'
+import { enrichMessage } from '../utils/friendlyErrors'
 
 const TOUR_KEY = 'cf_editor_tour_v1'
 const PREFS_KEY = 'cf_editor_prefs'
@@ -189,7 +190,7 @@ export default function CodingEnvironment() {
       .map(e => ({
         startLineNumber: e.line, startColumn: Math.max(1, e.col),
         endLineNumber: e.line, endColumn: model.getLineMaxColumn(e.line),
-        message: e.message, severity: sev(e.severity), source: 'gcc',
+        message: enrichMessage(e.message), severity: sev(e.severity), source: 'gcc',
       }))
     m.editor.setModelMarkers(model, 'gcc', markers)
     if (markers.length) ed.revealLineInCenter(markers[0].startLineNumber)
@@ -240,7 +241,9 @@ export default function CodingEnvironment() {
         setAllProblems(listRes.data)
         let saved = null
         try { saved = localStorage.getItem(`cf_code_${problemId}`) } catch { /* ignore */ }
-        setCode(saved && saved.trim() ? saved : DEFAULT_C)
+        const starter = pRes.data.starter_code && pRes.data.starter_code.trim()
+          ? pRes.data.starter_code : DEFAULT_C
+        setCode(saved && saved.trim() ? saved : starter)
       })
       .catch(() => { toast.error('Problem not found'); navigate(-1) })
       .finally(() => setLoading(false))

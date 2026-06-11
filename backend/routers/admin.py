@@ -33,7 +33,7 @@ def system_health(request: Request, db: Session = Depends(get_db), _admin=Depend
     warnings = [c["name"] for c in checks if not c["critical"] and not c["ok"]]
     status = "down" if issues else ("degraded" if warnings else "healthy")
 
-    return {"status": status, "checks": checks, "logs": monitoring.recent_logs()}
+    return {"status": status, "checks": checks, "logs": monitoring.recent_events()}
 
 
 @router.get("/dashboard")

@@ -8,7 +8,8 @@ from fastapi.staticfiles import StaticFiles
 import monitoring
 from database import Base, engine
 from routers import (
-    admin, ai_router, analytics, auth, classroom, notes, problems, reports, students, submissions,
+    admin, ai_router, analytics, auth, classroom, learn, notes, problems, reports,
+    students, submissions,
 )
 
 monitoring.install_log_capture()
@@ -31,6 +32,7 @@ def _lightweight_migrate():
     stmts = [
         "ALTER TABLE classes ADD COLUMN invite_code VARCHAR(12)",
         "ALTER TABLE submissions ADD COLUMN feedback TEXT",
+        "ALTER TABLE problems ADD COLUMN starter_code TEXT",
     ]
     with engine.begin() as conn:
         for s in stmts:
@@ -52,6 +54,29 @@ try:
 except Exception as _mig_exc:
     import logging
     logging.warning(f"lightweight migrate skipped: {_mig_exc}")
+
+
+def _seed_learn_content():
+    """Populate beginner challenges on first run (idempotent)."""
+    import logging
+    import seed_challenges
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        n = seed_challenges.seed_if_empty(db)
+        if n:
+            logging.info(f"Seeded {n} learn challenges")
+    except Exception as e:
+        logging.warning(f"challenge seed skipped: {e}")
+    finally:
+        db.close()
+
+
+try:
+    _seed_learn_content()
+except Exception as _seed_exc:
+    import logging
+    logging.warning(f"challenge seed skipped: {_seed_exc}")
 
 # ── Ensure upload directory exists ────────────────────────────────────────
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
@@ -75,6 +100,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ── Access log → live feed (powers the System health console) ────────────────
+import time as _time
+
+# Don't record these in the feed: the System page's own poll (would self-spam)
+# and CORS preflight noise.
+_FEED_SKIP = {"/api/admin/health"}
+
+
+@app.middleware("http")
+async def _access_log(request, call_next):
+    if request.method == "OPTIONS" or request.url.path in _FEED_SKIP:
+        return await call_next(request)
+    start = _time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        monitoring.record_http(request.method, request.url.path, 500,
+                               (_time.perf_counter() - start) * 1000)
+        raise
+    monitoring.record_http(request.method, request.url.path, response.status_code,
+                           (_time.perf_counter() - start) * 1000)
+    return response
+
 # ── Static uploads ─────────────────────────────────────────────────────────
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
@@ -89,6 +138,7 @@ app.include_router(students.router,    prefix="/api/students",    tags=["Student
 app.include_router(ai_router.router,   prefix="/api/ai",          tags=["AI"])
 app.include_router(classroom.router,   prefix="/api/classroom",   tags=["Classroom"])
 app.include_router(analytics.router,   prefix="/api/analytics",   tags=["Analytics"])
+app.include_router(learn.router,       prefix="/api/learn",       tags=["Learn"])
 
 
 @app.get("/api/health")

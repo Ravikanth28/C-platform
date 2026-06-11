@@ -92,6 +92,7 @@ class ProblemCreate(BaseModel):
     title: str
     description: str
     topics: Optional[str] = None
+    starter_code: Optional[str] = None
     mode: str                              # practice | test
     difficulty: str = "medium"
     start_time: Optional[datetime.datetime] = None
@@ -112,6 +113,7 @@ class ProblemResponse(BaseModel):
     title: str
     description: str
     topics: Optional[str]
+    starter_code: Optional[str] = None
     mode: str
     difficulty: str
     start_time: Optional[datetime.datetime]

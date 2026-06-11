@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   LayoutDashboard, BookOpen, Code2, FlaskConical,
-  BarChart3, LogOut, X, GraduationCap, LineChart, Activity,
+  BarChart3, LogOut, X, GraduationCap, LineChart, Activity, Puzzle,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Logo from './ui/Logo'
@@ -12,6 +12,7 @@ const adminNav = [
   { to: '/admin/notes',     icon: BookOpen,        label: 'Notes' },
   { to: '/admin/practice',  icon: Code2,           label: 'Practice Mode' },
   { to: '/admin/tests',     icon: FlaskConical,    label: 'Test Mode' },
+  { to: '/admin/challenges', icon: Puzzle,         label: 'Challenges' },
   { to: '/admin/classroom', icon: GraduationCap,   label: 'Classroom' },
   { to: '/admin/analytics', icon: LineChart,       label: 'Analytics' },
   { to: '/admin/reports',   icon: BarChart3,       label: 'Reports' },
@@ -22,6 +23,7 @@ const studentNav = [
   { to: '/student/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/student/notes',     icon: BookOpen,        label: 'Notes' },
   { to: '/student/practice',  icon: Code2,           label: 'Practice' },
+  { to: '/student/challenges', icon: Puzzle,         label: 'Challenges' },
   { to: '/student/tests',     icon: FlaskConical,    label: 'Tests' },
   { to: '/student/classroom', icon: GraduationCap,   label: 'Classroom' },
   { to: '/student/analytics', icon: LineChart,       label: 'Analytics' },

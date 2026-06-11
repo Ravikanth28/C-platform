@@ -23,6 +23,7 @@ def _problem_dict(p: models.Problem) -> dict:
         "title": p.title,
         "description": p.description,
         "topics": p.topics,
+        "starter_code": p.starter_code,
         "mode": p.mode.value if hasattr(p.mode, "value") else p.mode,
         "difficulty": p.difficulty,
         "start_time": p.start_time.isoformat() if p.start_time else None,
@@ -51,6 +52,7 @@ def create_problem(
         title=payload.title,
         description=payload.description,
         topics=payload.topics,
+        starter_code=payload.starter_code,
         mode=payload.mode,
         difficulty=payload.difficulty,
         start_time=payload.start_time,
@@ -160,7 +162,7 @@ def update_problem(
         raise HTTPException(404, "Problem not found")
 
     for field in (
-        "title", "description", "topics", "mode", "difficulty",
+        "title", "description", "topics", "starter_code", "mode", "difficulty",
         "start_time", "end_time", "duration", "is_for_all",
         "tab_switch_detect", "copy_paste_disable", "f12_disable", "fullscreen_required",
     ):
@@ -197,6 +199,7 @@ def duplicate_problem(
         raise HTTPException(404, "Problem not found")
     clone = models.Problem(
         title=f"{p.title} (copy)", description=p.description, topics=p.topics,
+        starter_code=p.starter_code,
         mode=p.mode, difficulty=p.difficulty, start_time=p.start_time, end_time=p.end_time,
         duration=p.duration, is_for_all=p.is_for_all, created_by=current_user.id,
         is_active=True,
