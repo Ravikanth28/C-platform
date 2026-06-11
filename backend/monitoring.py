@@ -136,18 +136,34 @@ def storage_checks(db):
         checks.append({"name": "Database storage (TiDB)", "kind": "db",
                        "percent": 0.0, "warn": False, "error": str(e)[:140]})
 
-    # ── Render container disk ───────────────────────────────────────────────
+    # ── Render container disk (informational — it's a SHARED host filesystem) ──
+    # The container disk is mostly OS + base image + other tenants, which isn't ours
+    # to manage, so this never raises a warning. We split the "used" portion into
+    # what the OS/base image takes vs. the files WE actually store.
     try:
-        path = os.getenv("UPLOAD_DIR", "./uploads")
-        if not os.path.isdir(path):
-            path = "/"
-        du = shutil.disk_usage(path)
-        pct = round(du.used / du.total * 100, 1) if du.total else 0.0
+        du = shutil.disk_usage("/")
+        upload_dir = os.getenv("UPLOAD_DIR", "./uploads")
+        uploads = 0
+        if os.path.isdir(upload_dir):
+            for root, _dirs, files in os.walk(upload_dir):
+                for fn in files:
+                    try:
+                        uploads += os.path.getsize(os.path.join(root, fn))
+                    except Exception:
+                        pass
+        system = max(0, du.used - uploads)
+        mb = lambda b: round(b / (1024 * 1024), 1)  # noqa: E731
         checks.append({
             "name": "Disk (Render)", "kind": "disk",
-            "used_mb": round(du.used / (1024 * 1024), 1),
-            "limit_mb": round(du.total / (1024 * 1024), 1),
-            "percent": pct, "warn": pct >= WARN_AT,
+            "used_mb": mb(du.used), "limit_mb": mb(du.total),
+            "percent": round(du.used / du.total * 100, 1) if du.total else 0.0,
+            "warn": False,
+            "breakdown": [
+                {"label": "System, OS & base image", "mb": mb(system), "seg": "system"},
+                {"label": "Your uploaded files", "mb": mb(uploads), "seg": "uploads"},
+                {"label": "Free", "mb": mb(du.free), "seg": "free"},
+            ],
+            "note": "Render's container disk is shared with the OS & base image — only 'Your uploaded files' is yours (and it resets on redeploy).",
         })
     except Exception as e:  # noqa: BLE001
         checks.append({"name": "Disk (Render)", "kind": "disk",

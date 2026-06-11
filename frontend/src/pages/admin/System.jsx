@@ -13,6 +13,13 @@ const STATUS = {
 
 const INTERVALS = [['Off', 0], ['2s', 2000], ['5s', 5000], ['15s', 15000]]
 
+// disk-breakdown segment colours
+const SEG_COLOR = {
+  system: 'var(--t4)',           // OS / base image / other tenants
+  uploads: 'var(--brand-solid)', // files we store
+  free: 'color-mix(in srgb, var(--ok) 35%, transparent)',
+}
+
 const methodColor = (m) => ({
   GET: 'var(--info)', POST: 'var(--ok)', PUT: 'var(--warn)',
   PATCH: 'var(--warn)', DELETE: 'var(--err)',
@@ -121,10 +128,34 @@ export default function AdminSystem() {
                 <div className="flex items-center gap-2 mb-2">
                   <Icon size={16} style={{ color }} />
                   <span className="text-[13px] font-semibold text-t">{s.name}</span>
-                  {over && <span className="text-[10px] ml-auto px-1.5 py-0.5 rounded" style={{ color: 'var(--err)', background: 'color-mix(in srgb, var(--err) 14%, transparent)' }}>≥ 90% — warning</span>}
+                  {over && <span className="text-[10px] ml-auto px-1.5 py-0.5 rounded" style={{ color: 'var(--err)', background: 'color-mix(in srgb, var(--err) 14%, transparent)' }}>running low</span>}
                 </div>
                 {s.error ? (
                   <p className="text-[12px] text-t4 font-mono break-words">unavailable: {s.error}</p>
+                ) : s.breakdown ? (
+                  /* split disk usage (informational): System / Your files / Free */
+                  <>
+                    <div className="flex justify-between text-[12px] text-t3 mb-1.5">
+                      <span className="tabular">{s.used_mb} MB / {s.limit_mb} MB used</span>
+                      <span className="tabular font-semibold text-t3">{s.percent}%</span>
+                    </div>
+                    <div className="flex h-2.5 rounded-full overflow-hidden surface-inset">
+                      {s.breakdown.map((seg) => (
+                        <div key={seg.seg} title={`${seg.label}: ${seg.mb} MB`}
+                          style={{ width: `${s.limit_mb ? (seg.mb / s.limit_mb) * 100 : 0}%`, background: SEG_COLOR[seg.seg] }} />
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px]">
+                      {s.breakdown.map((seg) => (
+                        <span key={seg.seg} className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-sm" style={{ background: SEG_COLOR[seg.seg] }} />
+                          <span className="text-t3">{seg.label}</span>
+                          <span className="tabular font-semibold text-t2">{seg.mb} MB</span>
+                        </span>
+                      ))}
+                    </div>
+                    {s.note && <p className="text-[11px] text-t4 mt-1.5">{s.note}</p>}
+                  </>
                 ) : (
                   <>
                     <div className="flex justify-between text-[12px] text-t3 mb-1.5">

@@ -60,8 +60,9 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-2">
             {storage.map((s) => {
               const Icon = s.kind === 'db' ? Database : HardDrive
-              const over = s.warn
-              const color = over ? 'var(--err)' : s.percent >= 75 ? 'var(--warn)' : 'var(--t3)'
+              const over = s.warn   // only the DB can warn; disk is informational
+              const color = over ? 'var(--err)' : 'var(--t3)'
+              const value = s.error ? '—' : (s.limit_mb == null ? `${s.used_mb} MB` : `${s.percent}%`)
               return (
                 <Link key={s.name} to="../system"
                   title={s.error ? s.error : `${s.used_mb} / ${s.limit_mb} MB`}
@@ -69,7 +70,7 @@ export default function AdminDashboard() {
                   style={{ borderColor: over ? 'color-mix(in srgb, var(--err) 40%, transparent)' : 'var(--line)', background: over ? 'color-mix(in srgb, var(--err) 10%, transparent)' : 'transparent' }}>
                   <Icon size={13} style={{ color }} />
                   <span className="text-t3">{s.kind === 'db' ? 'TiDB' : 'Disk'}</span>
-                  <span className="tabular font-semibold" style={{ color }}>{s.error ? '—' : `${s.percent}%`}</span>
+                  <span className="tabular font-semibold" style={{ color }}>{value}</span>
                 </Link>
               )
             })}
