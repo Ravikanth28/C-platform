@@ -14,19 +14,30 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <AuthProvider>
           <App />
           <Toaster
-            position="top-right"
+            position="top-center"
+            gutter={10}
             toastOptions={{
+              duration: 3000,
               style: {
                 background: 'var(--s)',
                 color: 'var(--t)',
-                border: '1px solid var(--b)',
-                borderRadius: '10px',
-                fontSize: '13px',
+                border: '1.5px solid var(--b)',
+                borderRadius: '14px',
+                padding: '12px 16px',
+                fontSize: '13.5px',
+                fontWeight: 500,
                 fontFamily: 'var(--sans)',
-                boxShadow: 'var(--shadow-md)',
+                boxShadow: '0 10px 30px -8px rgba(0,0,0,0.35), 0 2px 8px -2px rgba(0,0,0,0.2)',
+                maxWidth: '440px',
               },
-              success: { iconTheme: { primary: 'var(--ok)', secondary: 'var(--s)' } },
-              error:   { iconTheme: { primary: 'var(--err)', secondary: 'var(--s)' } },
+              success: {
+                iconTheme: { primary: 'var(--ok)', secondary: 'var(--s)' },
+                style: { borderColor: 'color-mix(in srgb, var(--ok) 45%, var(--b))' },
+              },
+              error: {
+                iconTheme: { primary: 'var(--err)', secondary: 'var(--s)' },
+                style: { borderColor: 'color-mix(in srgb, var(--err) 45%, var(--b))' },
+              },
             }}
           />
         </AuthProvider>

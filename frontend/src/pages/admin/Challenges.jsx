@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Pencil, Trash2, Eye, Bug, Puzzle } from 'lucide-react'
+import { Plus, Pencil, Trash2, Eye, Bug, Puzzle, Sparkles, Loader2, CalendarClock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../../api/client'
 import { PageLoader } from '../../components/ui/LoadingSpinner'
@@ -21,15 +21,36 @@ export default function AdminChallenges() {
   const [items, setItems] = useState(null)
   const [editing, setEditing] = useState(null)   // object or null
   const [filter, setFilter] = useState('')        // '' | predict | fixbug
+  const [generating, setGenerating] = useState(false)
+  const [schedule, setSchedule] = useState('off')
 
   const load = () => api.get('/learn/admin/challenges').then(r => setItems(r.data))
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    api.get('/learn/admin/challenges/schedule').then(r => setSchedule(r.data.frequency || 'off')).catch(() => {})
+  }, [])
 
   const remove = async (id) => {
     if (!window.confirm('Delete this challenge?')) return
     await api.delete(`/learn/admin/challenges/${id}`)
     toast.success('Deleted')
     load()
+  }
+
+  const generate = async () => {
+    setGenerating(true)
+    try {
+      const { data } = await api.post('/learn/admin/challenges/generate')
+      toast.success(`AI added ${data.count} challenge${data.count === 1 ? '' : 's'} (1 predict + 1 fix-the-bug)`)
+      load()
+    } catch (e) { toast.error(e.response?.data?.detail || 'Generation failed — try again') }
+    finally { setGenerating(false) }
+  }
+
+  const changeSchedule = async (freq) => {
+    setSchedule(freq)
+    try { await api.post('/learn/admin/challenges/schedule', { frequency: freq }); toast.success(`Auto-add: ${freq}`) }
+    catch { toast.error('Could not save schedule') }
   }
 
   if (!items) return <PageLoader />
@@ -42,9 +63,43 @@ export default function AdminChallenges() {
           <h1 className="h1">Challenges</h1>
           <p className="section-sub mt-0.5">Author Predict-the-Output and Fix-the-Bug skill-builders for students.</p>
         </div>
-        <button className="btn-primary btn-sm" onClick={() => setEditing({ ...BLANK })}>
-          <Plus size={14} /> New challenge
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button className="btn-secondary btn-sm" disabled={generating} onClick={generate} title="AI creates & verifies 1 Predict + 1 Fix-the-Bug">
+            {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {generating ? 'Generating…' : 'AI generate'}
+          </button>
+          <button className="btn-primary btn-sm" onClick={() => setEditing({ ...BLANK })}>
+            <Plus size={14} /> New challenge
+          </button>
+        </div>
+      </div>
+
+      {/* Auto-schedule */}
+      <div className="card flex items-center gap-3 flex-wrap" style={{ background: 'var(--brandGhost)', borderColor: 'color-mix(in srgb, var(--brand) 22%, transparent)' }}>
+        <CalendarClock size={16} style={{ color: 'var(--brand)' }} className="flex-shrink-0" />
+        <div className="flex-1 min-w-[180px]">
+          <p className="text-[13px] font-semibold text-t">Auto-add challenges on a schedule</p>
+          <p className="text-[12px] text-t4">AI generates a fresh Predict + Fix-the-Bug automatically, daily or weekly.</p>
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {schedule !== 'off' && (
+            <div className="flex gap-1">
+              {['daily', 'weekly'].map(f => (
+                <button key={f} onClick={() => changeSchedule(f)}
+                  className="px-3 py-1 rounded-lg text-[12.5px] capitalize border transition-colors"
+                  style={schedule === f
+                    ? { borderColor: 'var(--brand-solid)', color: 'var(--brand)', background: 'var(--brandL)' }
+                    : { borderColor: 'var(--line)', color: 'var(--t3)' }}>{f}</button>
+              ))}
+            </div>
+          )}
+          <button onClick={() => changeSchedule(schedule === 'off' ? 'daily' : 'off')}
+            role="switch" aria-checked={schedule !== 'off'} title={schedule === 'off' ? 'Enable' : 'Disable'}
+            className="relative w-11 h-6 rounded-full transition-colors flex-shrink-0"
+            style={{ background: schedule !== 'off' ? 'var(--brand-solid)' : 'var(--line-strong)' }}>
+            <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all"
+              style={{ left: schedule !== 'off' ? '22px' : '2px' }} />
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-2">

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   Plus, Trash2, Users, GraduationCap, ClipboardList, BarChart3,
   CalendarClock, CheckCircle2, Circle, ArrowRight, BookOpen, ChevronDown, Search,
-  Copy, RefreshCw, KeyRound,
+  Copy, RefreshCw, KeyRound, Sparkles, Loader2,
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -65,6 +65,8 @@ function AdminAssignments() {
   const [classSearch, setClassSearch] = useState('')
   const [drill, setDrill] = useState(null)        // assignment being inspected
   const [drillData, setDrillData] = useState(null)
+  const [genning, setGenning] = useState(false)
+  const [sched, setSched] = useState('off')
 
   const openDrill = async (a) => {
     setDrill(a); setDrillData(null)
@@ -83,6 +85,7 @@ function AdminAssignments() {
     load()
     api.get('/classroom/students').then(r => setStudents(r.data)).catch(() => {})
     api.get('/classroom/problems').then(r => setProblems(r.data)).catch(() => {})
+    api.get('/classroom/assignments/schedule').then(r => setSched(r.data.frequency || 'off')).catch(() => {})
   }, [])
 
   const deleteClass = async (id) => {
@@ -92,6 +95,23 @@ function AdminAssignments() {
   const deleteAssign = async (id) => {
     if (!confirm('Delete this assignment?')) return
     await api.delete(`/classroom/assignments/${id}`); toast.success('Assignment deleted'); load()
+  }
+  const genAssignment = async () => {
+    if (!selected) return
+    setGenning(true)
+    try {
+      const { data } = await api.post('/classroom/assignments/generate', { class_id: selected })
+      toast.success(`AI added assignment: ${data.title}`)
+      load()
+    } catch (e) { toast.error(e.response?.data?.detail || 'Generation failed — try again') }
+    finally { setGenning(false) }
+  }
+  const changeSched = async (frequency) => {
+    setSched(frequency)
+    try {
+      await api.post('/classroom/assignments/schedule', { frequency, class_id: selected })
+      toast.success(`Auto-add: ${frequency}`)
+    } catch (e) { toast.error(e.response?.data?.detail || 'Could not save schedule') }
   }
   const seedDemo = async () => {
     try {
@@ -176,10 +196,43 @@ function AdminAssignments() {
               </>
             )}
           </div>
-          <button className="btn-primary btn-sm disabled:opacity-50 flex-shrink-0" disabled={!selectedClass} onClick={() => setShowAssign(true)}>
-            <Plus size={13} /> New assignment
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button className="btn-secondary btn-sm disabled:opacity-50" disabled={!selectedClass || genning} onClick={genAssignment}
+              title="AI creates & verifies a coding problem and posts it as an assignment">
+              {genning ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} {genning ? 'Generating…' : 'AI generate'}
+            </button>
+            <button className="btn-primary btn-sm disabled:opacity-50" disabled={!selectedClass} onClick={() => setShowAssign(true)}>
+              <Plus size={13} /> New assignment
+            </button>
+          </div>
         </div>
+
+        {/* Auto-schedule for this class */}
+        {selectedClass && (
+          <div className="flex items-center gap-2.5 mb-3 p-2.5 rounded-lg flex-wrap"
+            style={{ background: 'var(--brandGhost)', border: '1px solid color-mix(in srgb, var(--brand) 20%, transparent)' }}>
+            <CalendarClock size={15} style={{ color: 'var(--brand)' }} className="flex-shrink-0" />
+            <span className="text-[12.5px] text-t2 flex-1 min-w-[160px]">Auto-add an AI assignment to <b>{selectedClass.name}</b> on a schedule</span>
+            {sched !== 'off' && (
+              <div className="flex gap-1">
+                {['daily', 'weekly'].map(f => (
+                  <button key={f} onClick={() => changeSched(f)}
+                    className="px-3 py-1 rounded-lg text-[12.5px] capitalize border transition-colors"
+                    style={sched === f
+                      ? { borderColor: 'var(--brand-solid)', color: 'var(--brand)', background: 'var(--brandL)' }
+                      : { borderColor: 'var(--line)', color: 'var(--t3)' }}>{f}</button>
+                ))}
+              </div>
+            )}
+            <button onClick={() => changeSched(sched === 'off' ? 'daily' : 'off')}
+              role="switch" aria-checked={sched !== 'off'} title={sched === 'off' ? 'Enable' : 'Disable'}
+              className="relative w-11 h-6 rounded-full transition-colors flex-shrink-0"
+              style={{ background: sched !== 'off' ? 'var(--brand-solid)' : 'var(--line-strong)' }}>
+              <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all"
+                style={{ left: sched !== 'off' ? '22px' : '2px' }} />
+            </button>
+          </div>
+        )}
 
         {!selectedClass ? (
           <p className="text-t4 text-[13px]">Select a class on the left to view its assignments.</p>

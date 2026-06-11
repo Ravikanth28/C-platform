@@ -1,13 +1,18 @@
 """Classes, assignments, and analytics — shared by admins and students."""
 import datetime
+import json
+import os
+import random
 import secrets
+import tempfile
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
+import code_runner
 import models
 from auth import get_admin_user, get_current_user
 from database import get_db
@@ -348,6 +353,186 @@ def assignment_progress(assignment_id: int, db: Session = Depends(get_db), _admi
         },
         "students": students,
     }
+
+
+# ─────────────────── AI-generated & scheduled assignments ──────────────────
+
+_ASSIGN_TOPICS = ["basics", "conditionals", "loops", "functions", "arrays", "strings", "pointers"]
+
+
+def _ameta_get(db, key, default=None):
+    db.execute(text("CREATE TABLE IF NOT EXISTS app_meta (k VARCHAR(64) PRIMARY KEY, v VARCHAR(255))"))
+    row = db.execute(text("SELECT v FROM app_meta WHERE k=:k"), {"k": key}).fetchone()
+    return row[0] if row else default
+
+
+def _ameta_set(db, key, value):
+    db.execute(text("CREATE TABLE IF NOT EXISTS app_meta (k VARCHAR(64) PRIMARY KEY, v VARCHAR(255))"))
+    db.execute(text("DELETE FROM app_meta WHERE k=:k"), {"k": key})
+    db.execute(text("INSERT INTO app_meta (k, v) VALUES (:k, :v)"), {"k": key, "v": str(value)})
+
+
+async def _ai_make_assignment(db, class_id, creator_id):
+    """AI drafts a coding problem; we VERIFY it by compiling its reference solution
+    and running every test input to compute the real expected outputs, then create
+    the problem + an assignment in the class. Returns the Assignment or None."""
+    from ai_service import chat_completion
+
+    klass = db.query(models.Class).filter(models.Class.id == class_id).first()
+    if not klass:
+        return None
+
+    topic = random.choice(_ASSIGN_TOPICS)
+    system = "You are a C programming problem setter. Output ONLY one valid JSON object — no prose, no code fences."
+    user = (
+        f'Create ONE beginner C coding problem on the topic "{topic}" as a JSON object. '
+        'Give code/inputs as ARRAYS OF LINES (one string per line):\n'
+        '{\n'
+        '  "title": "...",\n'
+        '  "difficulty": "easy",\n'
+        '  "description": "<markdown problem statement: what to read from stdin, what to print, with one worked example>",\n'
+        '  "solution_lines": ["#include <stdio.h>","int main() {","    ...","    return 0;","}"],\n'
+        '  "tests": [ {"input_lines": ["5"]}, {"input_lines": ["10"]}, {"input_lines": ["1"]} ]\n'
+        '}\n'
+        'The reference solution must read from stdin and print the answer. Provide 3-5 varied tests. '
+        'Each array entry is one ordinary line of C source written normally (e.g. printf("%d\\n", x);). '
+        'Output ONLY the JSON object.'
+    )
+    raw = await chat_completion(
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        max_tokens=2500, temperature=0.6,
+    )
+    txt = (raw or "").strip()
+    s, e = txt.find("{"), txt.rfind("}")
+    if s == -1 or e == -1:
+        return None
+    try:
+        obj = json.loads(txt[s:e + 1])
+    except Exception:
+        return None
+
+    lines = obj.get("solution_lines")
+    solution = ("\n".join(map(str, lines)) + "\n") if isinstance(lines, list) else obj.get("solution")
+    desc = obj.get("description")
+    if not solution or not desc:
+        return None
+
+    # Verify: compile the reference solution, then run each test input for real output.
+    verified = []
+    with tempfile.TemporaryDirectory() as tmp:
+        exe, _ = code_runner.compile_code(solution, tmp)
+        if not exe:
+            return None
+        for t in (obj.get("tests") or [])[:6]:
+            il = t.get("input_lines")
+            inp = ("\n".join(map(str, il)) + "\n") if isinstance(il, list) else (t.get("input", "") or "")
+            run = code_runner.run_once(exe, inp, 5.0)
+            if run["status"] == "ok":
+                verified.append((inp, run["output"]))
+    if not verified:
+        return None
+
+    now = datetime.datetime.utcnow()
+    problem = models.Problem(
+        title=obj.get("title", "Practice problem")[:200], description=desc, topics=topic,
+        mode=models.ProblemMode.practice, difficulty=obj.get("difficulty", "easy"),
+        is_for_all=False, created_by=creator_id, is_active=True,
+    )
+    db.add(problem)
+    db.flush()
+    for i, (inp, out) in enumerate(verified):
+        db.add(models.TestCase(problem_id=problem.id, input_data=inp, expected_output=out,
+                               is_hidden=(i >= 2), order_index=i))
+    # scope to the class's members so it shows for them
+    for m in klass.members:
+        db.add(models.ProblemAssignment(problem_id=problem.id, user_id=m.user_id))
+
+    assignment = models.Assignment(
+        title=obj.get("title", "Practice problem")[:200],
+        instructions="Auto-generated practice problem. Solve it before the due date.",
+        class_id=class_id, due_date=now + datetime.timedelta(days=7), created_by=creator_id,
+    )
+    db.add(assignment)
+    db.flush()
+    db.add(models.AssignmentProblem(assignment_id=assignment.id, problem_id=problem.id))
+    db.commit()
+    db.refresh(assignment)
+    return assignment
+
+
+class GenAssignmentIn(BaseModel):
+    class_id: int
+
+
+@router.post("/assignments/generate")
+async def generate_assignment(payload: GenAssignmentIn, db: Session = Depends(get_db), admin=Depends(get_admin_user)):
+    """One click → AI creates & verifies a coding problem and posts it as an assignment."""
+    try:
+        a = await _ai_make_assignment(db, payload.class_id, admin.id)
+    except Exception as ex:  # noqa: BLE001
+        raise HTTPException(502, f"Generation failed: {ex}")
+    if not a:
+        raise HTTPException(502, "AI didn't produce a valid problem — please try again.")
+    return _assignment_admin_dict(db, a)
+
+
+class AssignScheduleIn(BaseModel):
+    frequency: str                       # off | daily | weekly
+    class_id: Optional[int] = None
+
+
+@router.get("/assignments/schedule")
+def get_assignment_schedule(db: Session = Depends(get_db), _admin=Depends(get_admin_user)):
+    cid = _ameta_get(db, "assignment_class_id")
+    return {"frequency": _ameta_get(db, "assignment_schedule", "off"),
+            "class_id": int(cid) if cid else None,
+            "last_run": _ameta_get(db, "assignment_last_auto")}
+
+
+@router.post("/assignments/schedule")
+def set_assignment_schedule(payload: AssignScheduleIn, db: Session = Depends(get_db), _admin=Depends(get_admin_user)):
+    if payload.frequency not in ("off", "daily", "weekly"):
+        raise HTTPException(400, "frequency must be off, daily or weekly")
+    if payload.frequency != "off" and not payload.class_id:
+        raise HTTPException(400, "Choose a class for the schedule")
+    _ameta_set(db, "assignment_schedule", payload.frequency)
+    if payload.class_id:
+        _ameta_set(db, "assignment_class_id", payload.class_id)
+    db.commit()
+    return {"frequency": payload.frequency, "class_id": payload.class_id}
+
+
+@router.post("/cron/auto-assignment")
+async def cron_auto_assignment(key: str = "", db: Session = Depends(get_db)):
+    """External scheduler hook (GitHub Actions). Generates an assignment if due. CRON_KEY-protected."""
+    expected = os.getenv("CRON_KEY", "")
+    if not expected or key != expected:
+        raise HTTPException(403, "Invalid cron key")
+    freq = _ameta_get(db, "assignment_schedule", "off")
+    cid = _ameta_get(db, "assignment_class_id")
+    if freq == "off" or not cid:
+        return {"detail": "schedule off"}
+
+    now = datetime.datetime.utcnow()
+    last = _ameta_get(db, "assignment_last_auto")
+    if last:
+        try:
+            last_dt = datetime.datetime.fromisoformat(last)
+            interval = datetime.timedelta(days=1 if freq == "daily" else 7)
+            if now - last_dt < interval - datetime.timedelta(hours=2):
+                return {"detail": "not due yet", "last_run": last}
+        except Exception:
+            pass
+
+    klass = db.query(models.Class).filter(models.Class.id == int(cid)).first()
+    creator = klass.created_by if klass else None
+    if not creator:
+        admin = db.query(models.User).filter(models.User.role == models.UserRole.admin).first()
+        creator = admin.id if admin else None
+    a = await _ai_make_assignment(db, int(cid), creator)
+    _ameta_set(db, "assignment_last_auto", now.isoformat())
+    db.commit()
+    return {"detail": "generated" if a else "generation produced nothing", "assignment_id": a.id if a else None}
 
 
 # ──────────────────────────── student view ─────────────────────────────────

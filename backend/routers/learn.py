@@ -7,13 +7,16 @@ Learn hub — interactive lessons + quick beginner skill-builders.
   • POST /learn/challenges/{id}/check   grade an attempt
   • admin CRUD under /learn/admin/{lessons,challenges}
 """
+import datetime
 import json
+import os
+import random
 import tempfile
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 import code_runner
@@ -328,3 +331,160 @@ def admin_delete_challenge(cid: int, db: Session = Depends(get_db), _admin=Depen
     db.delete(c)
     db.commit()
     return {"detail": "Deleted"}
+
+
+# ─────────────────── AI-generated & scheduled challenges ────────────────────
+
+_CHALLENGE_TOPICS = ["basics", "conditionals", "loops", "functions", "arrays", "strings", "pointers"]
+
+
+def _meta_get(db, key, default=None):
+    db.execute(text("CREATE TABLE IF NOT EXISTS app_meta (k VARCHAR(64) PRIMARY KEY, v VARCHAR(255))"))
+    row = db.execute(text("SELECT v FROM app_meta WHERE k=:k"), {"k": key}).fetchone()
+    return row[0] if row else default
+
+
+def _meta_set(db, key, value):
+    db.execute(text("CREATE TABLE IF NOT EXISTS app_meta (k VARCHAR(64) PRIMARY KEY, v VARCHAR(255))"))
+    db.execute(text("DELETE FROM app_meta WHERE k=:k"), {"k": key})
+    db.execute(text("INSERT INTO app_meta (k, v) VALUES (:k, :v)"), {"k": key, "v": str(value)})
+
+
+async def _ai_make_challenges(db) -> List[dict]:
+    """Ask AI for one predict + one fix-the-bug exercise, VERIFY each by compiling
+    & running it (so expected outputs are always correct), then save them."""
+    from ai_service import chat_completion
+
+    topic = random.choice(_CHALLENGE_TOPICS)
+    system = "You are a C exercise author. Output ONLY one valid JSON object — no prose, no code fences."
+    # Ask for code as an ARRAY OF LINES — this avoids newline-escaping bugs entirely.
+    user = (
+        f'Create TWO short beginner C exercises on the topic "{topic}" as a JSON object. '
+        'Give every C program as an ARRAY of source lines (one string per line, no trailing newlines):\n'
+        '{\n'
+        '  "predict": {"title":"...","difficulty":"easy","snippet_lines":["#include <stdio.h>","int main() {","    ...","    return 0;","}"],"explanation":"<why that output>"},\n'
+        '  "fixbug":  {"title":"...","difficulty":"easy","buggy_lines":[...one clear bug...],"fixed_lines":[...corrected program...],"test_input":"<stdin or empty>","explanation":"<the bug and the fix>"}\n'
+        '}\n'
+        'The predict program must take NO input and print a few lines. Keep both programs tiny and beginner-level. '
+        'Each array entry is one ordinary line of C source code written normally (e.g. printf("%d\\n", i);). '
+        'Output ONLY the JSON object.'
+    )
+    raw = await chat_completion(
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        max_tokens=2000, temperature=0.6,
+    )
+    txt = (raw or "").strip()
+    s, e = txt.find("{"), txt.rfind("}")
+    if s == -1 or e == -1:
+        return []
+    try:
+        obj = json.loads(txt[s:e + 1])
+    except Exception:
+        return []
+
+    def _code(d, key):
+        """Accept either <key>_lines (array, preferred) or <key> (string)."""
+        lines = d.get(key + "_lines")
+        if isinstance(lines, list):
+            return "\n".join(str(x) for x in lines) + "\n"
+        v = d.get(key)
+        return v if isinstance(v, str) else None
+
+    created = []
+
+    # Predict: run the snippet to get the REAL output (don't trust the AI's).
+    p = obj.get("predict") or {}
+    p_snippet = _code(p, "snippet")
+    if p_snippet:
+        with tempfile.TemporaryDirectory() as tmp:
+            exe, _ = code_runner.compile_code(p_snippet, tmp)
+            if exe:
+                run = code_runner.run_once(exe, "", 5.0)
+                if run["status"] == "ok" and run["output"].strip():
+                    c = models.Challenge(
+                        kind="predict", title=p.get("title", "Predict the output")[:200],
+                        topic=topic, difficulty=p.get("difficulty", "easy"),
+                        snippet=p_snippet, test_input="",
+                        expected_output=run["output"], explanation=p.get("explanation", ""),
+                        is_active=True)
+                    db.add(c); db.flush(); created.append(_challenge_full(c))
+
+    # Fix-the-bug: run the FIXED program to get the correct expected output.
+    f = obj.get("fixbug") or {}
+    f_buggy, f_fixed = _code(f, "buggy"), _code(f, "fixed")
+    if f_buggy and f_fixed:
+        with tempfile.TemporaryDirectory() as tmp:
+            exe, _ = code_runner.compile_code(f_fixed, tmp)
+            if exe:
+                run = code_runner.run_once(exe, f.get("test_input", "") or "", 5.0)
+                if run["status"] == "ok":
+                    c = models.Challenge(
+                        kind="fixbug", title=f.get("title", "Fix the bug")[:200],
+                        topic=topic, difficulty=f.get("difficulty", "easy"),
+                        snippet=f_buggy, test_input=f.get("test_input", "") or "",
+                        expected_output=run["output"], explanation=f.get("explanation", ""),
+                        is_active=True)
+                    db.add(c); db.flush(); created.append(_challenge_full(c))
+
+    db.commit()
+    return created
+
+
+@router.post("/admin/challenges/generate")
+async def admin_generate_challenges(db: Session = Depends(get_db), _admin=Depends(get_admin_user)):
+    """One click → AI creates & verifies 1 Predict + 1 Fix-the-Bug challenge."""
+    try:
+        created = await _ai_make_challenges(db)
+    except Exception as ex:  # noqa: BLE001
+        raise HTTPException(502, f"Generation failed: {ex}")
+    if not created:
+        raise HTTPException(502, "AI didn't produce valid challenges — please try again.")
+    return {"created": created, "count": len(created)}
+
+
+class ScheduleIn(BaseModel):
+    frequency: str   # off | daily | weekly
+
+
+@router.get("/admin/challenges/schedule")
+def get_challenge_schedule(db: Session = Depends(get_db), _admin=Depends(get_admin_user)):
+    return {"frequency": _meta_get(db, "challenge_schedule", "off"),
+            "last_run": _meta_get(db, "challenge_last_auto")}
+
+
+@router.post("/admin/challenges/schedule")
+def set_challenge_schedule(payload: ScheduleIn, db: Session = Depends(get_db), _admin=Depends(get_admin_user)):
+    if payload.frequency not in ("off", "daily", "weekly"):
+        raise HTTPException(400, "frequency must be off, daily or weekly")
+    _meta_set(db, "challenge_schedule", payload.frequency)
+    db.commit()
+    return {"frequency": payload.frequency}
+
+
+@router.post("/cron/auto-challenges")
+async def cron_auto_challenges(key: str = "", db: Session = Depends(get_db)):
+    """Called by an external scheduler (GitHub Actions/cron-job.org). Generates a new
+    challenge set IF the admin's schedule is due. Protected by the CRON_KEY env var."""
+    expected = os.getenv("CRON_KEY", "")
+    if not expected or key != expected:
+        raise HTTPException(403, "Invalid cron key")
+
+    freq = _meta_get(db, "challenge_schedule", "off")
+    if freq == "off":
+        return {"detail": "schedule is off"}
+
+    now = datetime.datetime.utcnow()
+    last = _meta_get(db, "challenge_last_auto")
+    if last:
+        try:
+            last_dt = datetime.datetime.fromisoformat(last)
+            interval = datetime.timedelta(days=1 if freq == "daily" else 7)
+            if now - last_dt < interval - datetime.timedelta(hours=2):   # small grace window
+                return {"detail": "not due yet", "last_run": last}
+        except Exception:
+            pass
+
+    created = await _ai_make_challenges(db)
+    _meta_set(db, "challenge_last_auto", now.isoformat())
+    db.commit()
+    return {"detail": "generated", "count": len(created)}
