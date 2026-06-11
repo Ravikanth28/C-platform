@@ -168,6 +168,7 @@ export default function CodingEnvironment() {
   const [showResult, setShowResult]   = useState(false)
   const [showVisualize, setShowVisualize] = useState(false)
   const [memcheck, setMemcheck] = useState(null)   // null | 'loading' | result object
+  const [mobileView, setMobileView] = useState('problem')   // mobile-only: 'problem' | 'code'
 
   const timerRef     = useRef(null)
   const startTimeRef = useRef(Date.now())
@@ -201,6 +202,9 @@ export default function CodingEnvironment() {
   useEffect(() => {
     if (runner.compileError) showCompileErrors(runner.compileError)
   }, [runner.compileError]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // On phones, a finished submission lives in the left "Result" tab — surface it.
+  useEffect(() => { if (showResult) setMobileView('problem') }, [showResult])
 
   // Persist + apply editor preferences live
   useEffect(() => {
@@ -643,11 +647,25 @@ export default function CodingEnvironment() {
         </div>
       </header>
 
+      {/* Mobile panel switcher (phones/tablets) */}
+      <div className="lg:hidden flex border-b border-line bg-surface-h flex-shrink-0">
+        {[['problem', 'Problem'], ['code', 'Code & Run']].map(([v, label]) => (
+          <button key={v} onClick={() => setMobileView(v)}
+            className="flex-1 py-2.5 text-[13px] font-medium border-b-2 transition-colors"
+            style={mobileView === v
+              ? { color: 'var(--brand)', borderColor: 'var(--brand-solid)' }
+              : { color: 'var(--t3)', borderColor: 'transparent' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* MAIN */}
       <div className="flex flex-1 overflow-hidden">
 
         {/* LEFT PANEL */}
-        <div data-tour="statement" className="w-[44%] min-w-[300px] max-w-[560px] flex flex-col border-r border-line overflow-hidden">
+        <div data-tour="statement"
+          className={`w-full lg:w-[44%] lg:min-w-[300px] lg:max-w-[560px] ${mobileView === 'problem' ? 'flex' : 'hidden'} lg:flex flex-col border-r border-line overflow-hidden`}>
           <div className="flex border-b border-line bg-surface-h flex-shrink-0">
             <TabBtn label="Statement" active={activeTab === 'statement' && !showResult} onClick={() => { setActiveTab('statement'); setShowResult(false) }} />
             <TabBtn label="AI Help"   active={activeTab === 'aihelp'   && !showResult} onClick={() => { setActiveTab('aihelp');   setShowResult(false) }} />
@@ -701,7 +719,7 @@ export default function CodingEnvironment() {
         </div>
 
         {/* RIGHT PANEL */}
-        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        <div className={`flex-1 ${mobileView === 'code' ? 'flex' : 'hidden'} lg:flex flex-col overflow-hidden min-w-0`}>
           <div className="flex items-center justify-between px-3 h-10 border-b border-line bg-surface-h flex-shrink-0">
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1.5 text-xs text-t2 cursor-default select-none font-medium">
@@ -718,7 +736,7 @@ export default function CodingEnvironment() {
                 title="Take a guided tour of the editor"
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-line text-t3 hover:text-brand hover:border-line-strong transition-colors text-xs font-medium"
               >
-                <HelpCircle size={13} /> Guide
+                <HelpCircle size={13} /> <span className="hidden sm:inline">Guide</span>
               </button>
               <IconBtn icon={<Settings size={14} />} tooltip="Editor settings" onClick={() => setShowSettings(true)} />
               <IconBtn
@@ -791,10 +809,10 @@ export default function CodingEnvironment() {
                   </span>
                 )}
                 <button onClick={handleVisualize} className="btn-secondary btn-sm" title="Visualize code execution">
-                  <Eye size={12} /> Visualize
+                  <Eye size={12} /> <span className="hidden sm:inline">Visualize</span>
                 </button>
                 <button onClick={handleMemcheck} disabled={memcheck === 'loading'} className="btn-secondary btn-sm" title="Check for memory leaks, buffer overflows & undefined behavior">
-                  <ShieldCheck size={12} /> {memcheck === 'loading' ? 'Checking…' : 'Memory check'}
+                  <ShieldCheck size={12} /> <span className="hidden sm:inline">{memcheck === 'loading' ? 'Checking…' : 'Memory check'}</span>
                 </button>
                 {(() => {
                   const busy = runMode === 'console' ? runner.status === 'compiling' : running

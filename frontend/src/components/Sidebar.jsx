@@ -82,6 +82,7 @@ export default function Sidebar({ open, onClose }) {
               <NavLink
                 key={to}
                 to={to}
+                onClick={() => { if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose() }}
                 className={({ isActive }) => (isActive ? 'sidebar-item-active' : 'sidebar-item-inactive')}
                 title={!open ? label : undefined}
               >

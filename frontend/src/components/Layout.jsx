@@ -4,7 +4,10 @@ import Sidebar from './Sidebar'
 import Topbar  from './Topbar'
 
 export default function Layout() {
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  // Open by default on desktop; collapsed (drawer) by default on phones/tablets.
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => (typeof window !== 'undefined' ? window.innerWidth >= 1024 : true)
+  )
 
   return (
     <div className="flex h-screen overflow-hidden bg-beige-pg text-t">
