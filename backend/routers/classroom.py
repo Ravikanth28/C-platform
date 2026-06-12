@@ -479,6 +479,8 @@ async def generate_assignment(payload: GenAssignmentIn, db: Session = Depends(ge
 class AssignScheduleIn(BaseModel):
     frequency: str                       # off | daily | weekly
     class_id: Optional[int] = None
+    hour: int = 9                        # IST hour 0-23
+    dow: int = 0                         # 0=Mon..6=Sun (weekly only)
 
 
 @router.get("/assignments/schedule")
@@ -486,6 +488,8 @@ def get_assignment_schedule(db: Session = Depends(get_db), _admin=Depends(get_ad
     cid = _ameta_get(db, "assignment_class_id")
     return {"frequency": _ameta_get(db, "assignment_schedule", "off"),
             "class_id": int(cid) if cid else None,
+            "hour": int(_ameta_get(db, "assignment_hour", "9") or 9),
+            "dow": int(_ameta_get(db, "assignment_dow", "0") or 0),
             "last_run": _ameta_get(db, "assignment_last_auto")}
 
 
@@ -496,15 +500,20 @@ def set_assignment_schedule(payload: AssignScheduleIn, db: Session = Depends(get
     if payload.frequency != "off" and not payload.class_id:
         raise HTTPException(400, "Choose a class for the schedule")
     _ameta_set(db, "assignment_schedule", payload.frequency)
+    _ameta_set(db, "assignment_hour", max(0, min(23, payload.hour)))
+    _ameta_set(db, "assignment_dow", max(0, min(6, payload.dow)))
     if payload.class_id:
         _ameta_set(db, "assignment_class_id", payload.class_id)
     db.commit()
-    return {"frequency": payload.frequency, "class_id": payload.class_id}
+    return {"frequency": payload.frequency, "class_id": payload.class_id,
+            "hour": payload.hour, "dow": payload.dow}
 
 
 @router.post("/cron/auto-assignment")
 async def cron_auto_assignment(key: str = "", db: Session = Depends(get_db)):
-    """External scheduler hook (GitHub Actions). Generates an assignment if due. CRON_KEY-protected."""
+    """External scheduler hook (ideally hourly). Generates an assignment if the schedule
+    is due (at the chosen IST time). CRON_KEY-protected."""
+    from routers.learn import schedule_due
     expected = os.getenv("CRON_KEY", "")
     if not expected or key != expected:
         raise HTTPException(403, "Invalid cron key")
@@ -512,18 +521,12 @@ async def cron_auto_assignment(key: str = "", db: Session = Depends(get_db)):
     cid = _ameta_get(db, "assignment_class_id")
     if freq == "off" or not cid:
         return {"detail": "schedule off"}
+    hour = int(_ameta_get(db, "assignment_hour", "9") or 9)
+    dow = int(_ameta_get(db, "assignment_dow", "0") or 0)
+    if not schedule_due(freq, hour, dow, _ameta_get(db, "assignment_last_auto")):
+        return {"detail": "not due", "frequency": freq}
 
     now = datetime.datetime.utcnow()
-    last = _ameta_get(db, "assignment_last_auto")
-    if last:
-        try:
-            last_dt = datetime.datetime.fromisoformat(last)
-            interval = datetime.timedelta(days=1 if freq == "daily" else 7)
-            if now - last_dt < interval - datetime.timedelta(hours=2):
-                return {"detail": "not due yet", "last_run": last}
-        except Exception:
-            pass
-
     klass = db.query(models.Class).filter(models.Class.id == int(cid)).first()
     creator = klass.created_by if klass else None
     if not creator:

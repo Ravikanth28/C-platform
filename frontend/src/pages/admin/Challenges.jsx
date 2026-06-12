@@ -6,6 +6,7 @@ import { PageLoader } from '../../components/ui/LoadingSpinner'
 import { DifficultyBadge } from '../../components/ui/Badge'
 import Modal from '../../components/ui/Modal'
 import CountBar, { diffStats } from '../../components/ui/CountBar'
+import ScheduleControl from '../../components/ui/ScheduleControl'
 
 const TOPICS = [
   ['basics', 'Basics & I/O'], ['conditionals', 'Conditionals'], ['loops', 'Loops'],
@@ -23,13 +24,21 @@ export default function AdminChallenges() {
   const [editing, setEditing] = useState(null)   // object or null
   const [filter, setFilter] = useState('')        // '' | predict | fixbug
   const [generating, setGenerating] = useState(false)
-  const [schedule, setSchedule] = useState('off')
+  const [sched, setSched] = useState({ frequency: 'off', hour: 9, dow: 0 })
 
   const load = () => api.get('/learn/admin/challenges').then(r => setItems(r.data))
   useEffect(() => {
     load()
-    api.get('/learn/admin/challenges/schedule').then(r => setSchedule(r.data.frequency || 'off')).catch(() => {})
+    api.get('/learn/admin/challenges/schedule')
+      .then(r => setSched({ frequency: r.data.frequency || 'off', hour: r.data.hour ?? 9, dow: r.data.dow ?? 0 }))
+      .catch(() => {})
   }, [])
+
+  const saveSchedule = async (next) => {
+    setSched(next)
+    try { await api.post('/learn/admin/challenges/schedule', next); toast.success(next.frequency === 'off' ? 'Auto-add off' : `Auto-add: ${next.frequency}`) }
+    catch { toast.error('Could not save schedule') }
+  }
 
   const remove = async (id) => {
     if (!window.confirm('Delete this challenge?')) return
@@ -46,12 +55,6 @@ export default function AdminChallenges() {
       load()
     } catch (e) { toast.error(e.response?.data?.detail || 'Generation failed — try again') }
     finally { setGenerating(false) }
-  }
-
-  const changeSchedule = async (freq) => {
-    setSchedule(freq)
-    try { await api.post('/learn/admin/challenges/schedule', { frequency: freq }); toast.success(`Auto-add: ${freq}`) }
-    catch { toast.error('Could not save schedule') }
   }
 
   if (!items) return <PageLoader />
@@ -79,28 +82,9 @@ export default function AdminChallenges() {
         <CalendarClock size={16} style={{ color: 'var(--brand)' }} className="flex-shrink-0" />
         <div className="flex-1 min-w-[180px]">
           <p className="text-[13px] font-semibold text-t">Auto-add challenges on a schedule</p>
-          <p className="text-[12px] text-t4">AI generates a fresh Predict + Fix-the-Bug automatically, daily or weekly.</p>
+          <p className="text-[12px] text-t4">AI generates a fresh Predict + Fix-the-Bug at the time you pick.</p>
         </div>
-        <div className="flex items-center gap-3 flex-shrink-0">
-          {schedule !== 'off' && (
-            <div className="flex gap-1">
-              {['daily', 'weekly'].map(f => (
-                <button key={f} onClick={() => changeSchedule(f)}
-                  className="px-3 py-1 rounded-lg text-[12.5px] capitalize border transition-colors"
-                  style={schedule === f
-                    ? { borderColor: 'var(--brand-solid)', color: 'var(--brand)', background: 'var(--brandL)' }
-                    : { borderColor: 'var(--line)', color: 'var(--t3)' }}>{f}</button>
-              ))}
-            </div>
-          )}
-          <button onClick={() => changeSchedule(schedule === 'off' ? 'daily' : 'off')}
-            role="switch" aria-checked={schedule !== 'off'} title={schedule === 'off' ? 'Enable' : 'Disable'}
-            className="relative w-11 h-6 rounded-full transition-colors flex-shrink-0"
-            style={{ background: schedule !== 'off' ? 'var(--brand-solid)' : 'var(--line-strong)' }}>
-            <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all"
-              style={{ left: schedule !== 'off' ? '22px' : '2px' }} />
-          </button>
-        </div>
+        <ScheduleControl value={sched} onChange={saveSchedule} />
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">

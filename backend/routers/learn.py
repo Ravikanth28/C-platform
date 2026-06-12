@@ -350,6 +350,31 @@ def _meta_set(db, key, value):
     db.execute(text("INSERT INTO app_meta (k, v) VALUES (:k, :v)"), {"k": key, "v": str(value)})
 
 
+_IST = datetime.timedelta(hours=5, minutes=30)   # India Standard Time = UTC + 5:30
+
+
+def schedule_due(freq, hour, dow, last_iso):
+    """Should an auto-schedule fire right now? Time is interpreted in IST.
+    `freq`: daily|weekly · `hour`: 0-23 (IST) · `dow`: 0=Mon..6=Sun (weekly)."""
+    if freq not in ("daily", "weekly"):
+        return False
+    now_ist = datetime.datetime.utcnow() + _IST
+    if now_ist.hour < hour:
+        return False                         # before today's scheduled time
+    last_ist = None
+    if last_iso:
+        try:
+            last_ist = datetime.datetime.fromisoformat(last_iso) + _IST
+        except Exception:
+            last_ist = None
+    if freq == "daily":
+        return not (last_ist and last_ist.date() == now_ist.date())
+    # weekly
+    if now_ist.weekday() != dow:
+        return False
+    return not (last_ist and (now_ist.date() - last_ist.date()).days < 6)
+
+
 async def _ai_make_challenges(db) -> List[dict]:
     """Ask AI for one predict + one fix-the-bug exercise, VERIFY each by compiling
     & running it (so expected outputs are always correct), then save them."""
@@ -443,12 +468,16 @@ async def admin_generate_challenges(db: Session = Depends(get_db), _admin=Depend
 
 
 class ScheduleIn(BaseModel):
-    frequency: str   # off | daily | weekly
+    frequency: str        # off | daily | weekly
+    hour: int = 9         # IST hour 0-23 (time of day to generate)
+    dow: int = 0          # 0=Mon..6=Sun (weekly only)
 
 
 @router.get("/admin/challenges/schedule")
 def get_challenge_schedule(db: Session = Depends(get_db), _admin=Depends(get_admin_user)):
     return {"frequency": _meta_get(db, "challenge_schedule", "off"),
+            "hour": int(_meta_get(db, "challenge_hour", "9") or 9),
+            "dow": int(_meta_get(db, "challenge_dow", "0") or 0),
             "last_run": _meta_get(db, "challenge_last_auto")}
 
 
@@ -457,33 +486,27 @@ def set_challenge_schedule(payload: ScheduleIn, db: Session = Depends(get_db), _
     if payload.frequency not in ("off", "daily", "weekly"):
         raise HTTPException(400, "frequency must be off, daily or weekly")
     _meta_set(db, "challenge_schedule", payload.frequency)
+    _meta_set(db, "challenge_hour", max(0, min(23, payload.hour)))
+    _meta_set(db, "challenge_dow", max(0, min(6, payload.dow)))
     db.commit()
-    return {"frequency": payload.frequency}
+    return {"frequency": payload.frequency, "hour": payload.hour, "dow": payload.dow}
 
 
 @router.post("/cron/auto-challenges")
 async def cron_auto_challenges(key: str = "", db: Session = Depends(get_db)):
-    """Called by an external scheduler (GitHub Actions/cron-job.org). Generates a new
-    challenge set IF the admin's schedule is due. Protected by the CRON_KEY env var."""
+    """Called by an external scheduler (GitHub Actions/cron-job.org), ideally hourly.
+    Generates a challenge set IF the schedule is due (at the chosen IST time)."""
     expected = os.getenv("CRON_KEY", "")
     if not expected or key != expected:
         raise HTTPException(403, "Invalid cron key")
 
     freq = _meta_get(db, "challenge_schedule", "off")
-    if freq == "off":
-        return {"detail": "schedule is off"}
+    hour = int(_meta_get(db, "challenge_hour", "9") or 9)
+    dow = int(_meta_get(db, "challenge_dow", "0") or 0)
+    if not schedule_due(freq, hour, dow, _meta_get(db, "challenge_last_auto")):
+        return {"detail": "not due", "frequency": freq}
 
     now = datetime.datetime.utcnow()
-    last = _meta_get(db, "challenge_last_auto")
-    if last:
-        try:
-            last_dt = datetime.datetime.fromisoformat(last)
-            interval = datetime.timedelta(days=1 if freq == "daily" else 7)
-            if now - last_dt < interval - datetime.timedelta(hours=2):   # small grace window
-                return {"detail": "not due yet", "last_run": last}
-        except Exception:
-            pass
-
     try:
         created = await _ai_make_challenges(db)
     except Exception as ex:  # noqa: BLE001 — don't 500 the cron; report and retry next run
