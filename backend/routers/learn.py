@@ -478,7 +478,8 @@ def get_challenge_schedule(db: Session = Depends(get_db), _admin=Depends(get_adm
     return {"frequency": _meta_get(db, "challenge_schedule", "off"),
             "hour": int(_meta_get(db, "challenge_hour", "9") or 9),
             "dow": int(_meta_get(db, "challenge_dow", "0") or 0),
-            "last_run": _meta_get(db, "challenge_last_auto")}
+            "last_run": _meta_get(db, "challenge_last_auto"),
+            "last_result": _meta_get(db, "challenge_last_result")}
 
 
 @router.post("/admin/challenges/schedule")
@@ -510,9 +511,14 @@ async def cron_auto_challenges(key: str = "", db: Session = Depends(get_db)):
     try:
         created = await _ai_make_challenges(db)
     except Exception as ex:  # noqa: BLE001 — don't 500 the cron; report and retry next run
+        _meta_set(db, "challenge_last_result", f"failed — {str(ex)[:80]}")
+        db.commit()
         return {"detail": "generation failed (will retry next run)", "error": str(ex)[:200]}
     if created:                       # only advance last_run on success, so failures retry
         _meta_set(db, "challenge_last_auto", now.isoformat())
-        db.commit()
+        _meta_set(db, "challenge_last_result", f"added {len(created)} challenge(s)")
+    else:
+        _meta_set(db, "challenge_last_result", "no challenges produced — will retry")
+    db.commit()
     return {"detail": "generated" if created else "no challenges produced (will retry)",
             "count": len(created or [])}

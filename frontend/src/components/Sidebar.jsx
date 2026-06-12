@@ -83,6 +83,7 @@ export default function Sidebar({ open, onClose }) {
               <NavLink
                 key={to}
                 to={to}
+                data-tour={`nav-${to.split('/').pop()}`}
                 onClick={() => { if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose() }}
                 className={({ isActive }) => (isActive ? 'sidebar-item-active' : 'sidebar-item-inactive')}
                 title={!open ? label : undefined}
@@ -99,6 +100,7 @@ export default function Sidebar({ open, onClose }) {
           {open && user && (
             <NavLink
               to={`/${user.role}/profile`}
+              data-tour="nav-profile"
               onClick={() => { if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose() }}
               className="flex items-center gap-2.5 px-2 py-2 mb-1 rounded-lg bg-beige-pill hover:shadow-katonic-sm transition-shadow"
               title="Edit profile"

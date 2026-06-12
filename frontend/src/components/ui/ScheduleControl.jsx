@@ -45,11 +45,16 @@ export default function ScheduleControl({ value, onChange }) {
       )}
 
       <button onClick={() => set({ frequency: on ? 'off' : 'daily' })}
-        role="switch" aria-checked={on} title={on ? 'Disable' : 'Enable'}
-        className="relative w-11 h-6 rounded-full transition-colors flex-shrink-0"
-        style={{ background: on ? 'var(--brand-solid)' : 'var(--line-strong)' }}>
-        <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all"
-          style={{ left: on ? '22px' : '2px' }} />
+        role="switch" aria-checked={on} title={on ? 'Disable auto-add' : 'Enable auto-add'}
+        className="relative w-11 h-6 rounded-full transition-colors flex-shrink-0 border"
+        style={{
+          background: on ? 'var(--brand-solid)' : 'var(--surface-h)',
+          borderColor: on ? 'var(--brand-solid)' : 'var(--line-strong)',
+        }}>
+        <span
+          className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full shadow-sm transition-all"
+          style={{ left: on ? '24px' : '4px', background: on ? '#fff' : 'var(--t3)' }}
+        />
       </button>
     </div>
   )

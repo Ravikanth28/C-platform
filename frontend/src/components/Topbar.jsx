@@ -1,9 +1,9 @@
-import { PanelLeft } from 'lucide-react'
+import { PanelLeft, HelpCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import ThemeToggle from './ui/ThemeToggle'
 import Breadcrumb from './ui/Breadcrumb'
 
-export default function Topbar({ onMenuClick }) {
+export default function Topbar({ onMenuClick, onTour }) {
   const { user } = useAuth()
   const initial = (user?.full_name || user?.username || '?')[0].toUpperCase()
 
@@ -21,8 +21,14 @@ export default function Topbar({ onMenuClick }) {
         <Breadcrumb />
       </div>
 
-      {/* Right: theme + user */}
+      {/* Right: tour + theme + user */}
       <div className="flex items-center gap-2">
+        {onTour && (
+          <button onClick={onTour} title="Take a guided tour"
+            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-t3 hover:text-brand hover:bg-surface-h transition-colors">
+            <HelpCircle size={17} />
+          </button>
+        )}
         <ThemeToggle />
 
         {user && (

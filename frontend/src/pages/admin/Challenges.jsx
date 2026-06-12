@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Plus, Pencil, Trash2, Eye, Bug, Puzzle, Sparkles, Loader2, CalendarClock } from 'lucide-react'
+import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
 import api from '../../api/client'
 import { PageLoader } from '../../components/ui/LoadingSpinner'
@@ -30,12 +31,12 @@ export default function AdminChallenges() {
   useEffect(() => {
     load()
     api.get('/learn/admin/challenges/schedule')
-      .then(r => setSched({ frequency: r.data.frequency || 'off', hour: r.data.hour ?? 9, dow: r.data.dow ?? 0 }))
+      .then(r => setSched({ frequency: r.data.frequency || 'off', hour: r.data.hour ?? 9, dow: r.data.dow ?? 0, last_run: r.data.last_run, last_result: r.data.last_result }))
       .catch(() => {})
   }, [])
 
   const saveSchedule = async (next) => {
-    setSched(next)
+    setSched(s => ({ ...s, ...next }))
     try { await api.post('/learn/admin/challenges/schedule', next); toast.success(next.frequency === 'off' ? 'Auto-add off' : `Auto-add: ${next.frequency}`) }
     catch { toast.error('Could not save schedule') }
   }
@@ -83,6 +84,12 @@ export default function AdminChallenges() {
         <div className="flex-1 min-w-[180px]">
           <p className="text-[13px] font-semibold text-t">Auto-add challenges on a schedule</p>
           <p className="text-[12px] text-t4">AI generates a fresh Predict + Fix-the-Bug at the time you pick.</p>
+          {sched.last_run && (
+            <p className="text-[11px] text-t4 mt-1">
+              Last run {formatDistanceToNow(new Date(sched.last_run), { addSuffix: true })}
+              {sched.last_result ? ` · ${sched.last_result}` : ''}
+            </p>
+          )}
         </div>
         <ScheduleControl value={sched} onChange={saveSchedule} />
       </div>

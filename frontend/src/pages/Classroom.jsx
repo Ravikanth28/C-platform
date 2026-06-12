@@ -88,7 +88,7 @@ function AdminAssignments() {
     api.get('/classroom/students').then(r => setStudents(r.data)).catch(() => {})
     api.get('/classroom/problems').then(r => setProblems(r.data)).catch(() => {})
     api.get('/classroom/assignments/schedule')
-      .then(r => setSched({ frequency: r.data.frequency || 'off', hour: r.data.hour ?? 9, dow: r.data.dow ?? 0 }))
+      .then(r => setSched({ frequency: r.data.frequency || 'off', hour: r.data.hour ?? 9, dow: r.data.dow ?? 0, last_run: r.data.last_run, last_result: r.data.last_result }))
       .catch(() => {})
   }, [])
 
@@ -111,7 +111,7 @@ function AdminAssignments() {
     finally { setGenning(false) }
   }
   const changeSched = async (next) => {
-    setSched(next)
+    setSched(s => ({ ...s, ...next }))
     try {
       await api.post('/classroom/assignments/schedule', { ...next, class_id: selected })
       toast.success(next.frequency === 'off' ? 'Auto-add off' : `Auto-add: ${next.frequency}`)
@@ -219,7 +219,15 @@ function AdminAssignments() {
           <div className="flex items-center gap-2.5 mb-3 p-2.5 rounded-lg flex-wrap"
             style={{ background: 'var(--brandGhost)', border: '1px solid color-mix(in srgb, var(--brand) 20%, transparent)' }}>
             <CalendarClock size={15} style={{ color: 'var(--brand)' }} className="flex-shrink-0" />
-            <span className="text-[12.5px] text-t2 flex-1 min-w-[160px]">Auto-add an AI assignment to <b>{selectedClass.name}</b> at the time you pick</span>
+            <div className="flex-1 min-w-[160px]">
+              <span className="text-[12.5px] text-t2">Auto-add an AI assignment to <b>{selectedClass.name}</b> at the time you pick</span>
+              {sched.last_run && (
+                <p className="text-[11px] text-t4 mt-0.5">
+                  Last run {formatDistanceToNow(new Date(sched.last_run), { addSuffix: true })}
+                  {sched.last_result ? ` · ${sched.last_result}` : ''}
+                </p>
+              )}
+            </div>
             <ScheduleControl value={sched} onChange={changeSched} />
           </div>
         )}

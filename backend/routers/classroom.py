@@ -490,7 +490,8 @@ def get_assignment_schedule(db: Session = Depends(get_db), _admin=Depends(get_ad
             "class_id": int(cid) if cid else None,
             "hour": int(_ameta_get(db, "assignment_hour", "9") or 9),
             "dow": int(_ameta_get(db, "assignment_dow", "0") or 0),
-            "last_run": _ameta_get(db, "assignment_last_auto")}
+            "last_run": _ameta_get(db, "assignment_last_auto"),
+            "last_result": _ameta_get(db, "assignment_last_result")}
 
 
 @router.post("/assignments/schedule")
@@ -535,10 +536,15 @@ async def cron_auto_assignment(key: str = "", db: Session = Depends(get_db)):
     try:
         a = await _ai_make_assignment(db, int(cid), creator)
     except Exception as ex:  # noqa: BLE001 — graceful, retry next run
+        _ameta_set(db, "assignment_last_result", f"failed — {str(ex)[:80]}")
+        db.commit()
         return {"detail": "generation failed (will retry next run)", "error": str(ex)[:200]}
     if a:                             # only advance last_run on success
         _ameta_set(db, "assignment_last_auto", now.isoformat())
-        db.commit()
+        _ameta_set(db, "assignment_last_result", f"added \"{a.title}\"")
+    else:
+        _ameta_set(db, "assignment_last_result", "no problem produced — will retry")
+    db.commit()
     return {"detail": "generated" if a else "no problem produced (will retry)",
             "assignment_id": a.id if a else None}
 
