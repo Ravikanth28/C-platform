@@ -88,7 +88,7 @@ export default function StudentDashboard() {
                       </p>
                     )}
                   </div>
-                  <Link to={`/code/${t.id}`} className="btn-secondary btn-sm">
+                  <Link to={`/code/${t.id}?mode=test`} className="btn-secondary btn-sm">
                     Enter <ArrowRight size={12} />
                   </Link>
                 </div>
