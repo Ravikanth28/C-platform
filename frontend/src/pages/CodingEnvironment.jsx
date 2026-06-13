@@ -206,6 +206,18 @@ export default function CodingEnvironment() {
   // On phones, a finished submission lives in the left "Result" tab — surface it.
   useEffect(() => { if (showResult) setMobileView('problem') }, [showResult])
 
+  // While in a test, send a heartbeat (with violations + run count) so admins see live status.
+  const runsRef = useRef(0)
+  useEffect(() => {
+    if (!problem || !isTestMode) return
+    const ping = () => api.post(`/submissions/test-ping/${problemId}`, {
+      tab_switches: tabSwitches, runs: runsRef.current,
+    }).catch(() => {})
+    ping()
+    const id = setInterval(ping, 20000)
+    return () => clearInterval(id)
+  }, [problem, isTestMode, problemId, tabSwitches])
+
   // Persist + apply editor preferences live
   useEffect(() => {
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)) } catch { /* ignore */ }
@@ -348,6 +360,8 @@ export default function CodingEnvironment() {
     
     document.addEventListener('fullscreenchange', onFullscreenChange)
 
+    const cleanups = [() => document.removeEventListener('fullscreenchange', onFullscreenChange)]
+
     if (problem.tab_switch_detect) {
       const onVisibility = () => {
         if (document.hidden) {
@@ -359,13 +373,35 @@ export default function CodingEnvironment() {
         }
       }
       document.addEventListener('visibilitychange', onVisibility)
-      return () => {
-        document.removeEventListener('visibilitychange', onVisibility)
-        document.removeEventListener('fullscreenchange', onFullscreenChange)
-      }
+      cleanups.push(() => document.removeEventListener('visibilitychange', onVisibility))
     }
-    
-    return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
+
+    if (problem.window_switch_detect) {
+      // Window lost focus — student switched to another app/window (Alt-Tab,
+      // clicked outside the browser). Delay the check so a plain tab switch
+      // (already counted via visibilitychange) doesn't get counted twice.
+      let blurTimer = null
+      const onBlur = () => {
+        blurTimer = setTimeout(() => {
+          if (document.hidden) return  // it was a tab switch, not a window switch
+          setTabSwitches(prev => {
+            const next = prev + 1
+            toast.error(`Window switch detected! (${next})`, { duration: 4000 })
+            return next
+          })
+        }, 200)
+      }
+      const onFocus = () => { if (blurTimer) { clearTimeout(blurTimer); blurTimer = null } }
+      window.addEventListener('blur', onBlur)
+      window.addEventListener('focus', onFocus)
+      cleanups.push(() => {
+        window.removeEventListener('blur', onBlur)
+        window.removeEventListener('focus', onFocus)
+        if (blurTimer) clearTimeout(blurTimer)
+      })
+    }
+
+    return () => cleanups.forEach(fn => fn())
   }, [problem, isTestMode])
 
   useEffect(() => {
@@ -376,17 +412,27 @@ export default function CodingEnvironment() {
         e.stopPropagation()
         toast.error('Developer tools are disabled during this test.')
       }
-      if (problem.copy_paste_disable && (e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'v' || e.key === 'C' || e.key === 'V')) {
+      const key = e.key.toLowerCase()
+      if (problem.copy_paste_disable && (e.ctrlKey || e.metaKey) && key === 'c') {
         e.preventDefault()
         e.stopPropagation()
         toast.error('Copy-paste is disabled during this test.')
       }
-    }
-    const onCopyPaste = (e) => {
-      if (problem.copy_paste_disable) {
+      if ((problem.copy_paste_disable || problem.block_paste) && (e.ctrlKey || e.metaKey) && key === 'v') {
         e.preventDefault()
         e.stopPropagation()
-        toast.error('Copy-paste is disabled during this test.')
+        toast.error('Pasting is disabled during this test.')
+      }
+    }
+    const onCopyPaste = (e) => {
+      // 'copy' is blocked only by copy_paste_disable; 'paste' by either option.
+      const blocked = e.type === 'paste'
+        ? (problem.copy_paste_disable || problem.block_paste)
+        : problem.copy_paste_disable
+      if (blocked) {
+        e.preventDefault()
+        e.stopPropagation()
+        toast.error(e.type === 'paste' ? 'Pasting is disabled during this test.' : 'Copy-paste is disabled during this test.')
       }
     }
     const onContext = (e) => { 
@@ -467,6 +513,7 @@ export default function CodingEnvironment() {
   // Run = student self-check. NEVER grades or stores a submission.
   const handleRun = async () => {
     if (!code.trim()) { toast.error('Write some code first!'); return }
+    runsRef.current += 1
     setCustomInputOpen(true)
 
     if (runMode === 'console') {

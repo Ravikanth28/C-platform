@@ -26,6 +26,7 @@ function ProblemForm({ initial, onSave, onCancel }) {
       start_time: '', end_time: '',
       tab_switch_detect: true, copy_paste_disable: true,
       f12_disable: true, fullscreen_required: true,
+      window_switch_detect: true, block_paste: true,
       test_cases: [{ ...EMPTY_TC }],
     }
   )
@@ -127,7 +128,9 @@ function ProblemForm({ initial, onSave, onCancel }) {
             <div className="grid grid-cols-2 gap-2">
               {[
                 ['tab_switch_detect',   'Tab Switch Detection'],
+                ['window_switch_detect','Window Switch Detection'],
                 ['copy_paste_disable',  'Disable Copy-Paste'],
+                ['block_paste',         'Block Paste into Editor'],
                 ['f12_disable',         'Disable F12 / DevTools'],
                 ['fullscreen_required', 'Require Full Screen'],
               ].map(([key, label]) => (
@@ -243,6 +246,14 @@ export default function TestMode() {
       load()
     } catch { toast.error('Failed to update status') }
   }
+  const handleDelete = async (p) => {
+    if (!window.confirm(`Permanently delete "${p.title}"?\n\nThis removes the test, its cases and all student attempts/submissions. This cannot be undone.`)) return
+    try {
+      await api.delete(`/problems/${p.id}/permanent`)
+      toast.success('Test deleted')
+      load()
+    } catch { toast.error('Failed to delete') }
+  }
 
   const handleSave = async (payload) => {
     try {
@@ -321,8 +332,11 @@ export default function TestMode() {
                     <Copy size={14} />
                   </button>
                   <button onClick={() => handleToggleActive(p)} title={p.is_active ? 'Deactivate' : 'Activate'} className="btn-ghost p-1"
-                    style={{ color: p.is_active ? 'var(--err)' : 'var(--ok)' }}>
+                    style={{ color: p.is_active ? 'var(--warn)' : 'var(--ok)' }}>
                     <Power size={14} />
+                  </button>
+                  <button onClick={() => handleDelete(p)} title="Delete permanently" className="btn-ghost p-1" style={{ color: 'var(--err)' }}>
+                    <Trash2 size={14} />
                   </button>
                 </div>
               </div>

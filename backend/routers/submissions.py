@@ -123,6 +123,32 @@ def memory_check(payload: VisualizeRequest, _user: models.User = Depends(get_cur
     return memcheck(payload.code, payload.custom_input)
 
 
+class TestPingIn(BaseModel):
+    tab_switches: int = 0
+    runs: int = 0
+
+
+@router.post("/test-ping/{problem_id}")
+def test_ping(problem_id: int, payload: TestPingIn = TestPingIn(),
+              db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Heartbeat while a student is in a test — feeds the admin's live proctoring view
+    with violations (tab switches) and run count."""
+    import datetime as _dt
+    now = _dt.datetime.utcnow()
+    tabs, runs = max(0, payload.tab_switches), max(0, payload.runs)
+    sess = db.query(models.TestSession).filter(
+        models.TestSession.problem_id == problem_id, models.TestSession.user_id == user.id).first()
+    if sess:
+        sess.last_seen = now
+        sess.tab_switches = max(sess.tab_switches or 0, tabs)
+        sess.runs = max(sess.runs or 0, runs)
+    else:
+        db.add(models.TestSession(problem_id=problem_id, user_id=user.id, started_at=now,
+                                  last_seen=now, tab_switches=tabs, runs=runs))
+    db.commit()
+    return {"ok": True}
+
+
 def _poststate_locals(steps):
     """
     Both tracers capture a variable's value at LINE ENTRY (before the line runs),

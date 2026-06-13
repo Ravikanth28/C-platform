@@ -122,6 +122,8 @@ class ProblemCreate(BaseModel):
     copy_paste_disable: bool = False
     f12_disable: bool = False
     fullscreen_required: bool = False
+    window_switch_detect: bool = False
+    block_paste: bool = False
 
 
 class ProblemResponse(BaseModel):
@@ -142,6 +144,8 @@ class ProblemResponse(BaseModel):
     copy_paste_disable: bool
     f12_disable: bool
     fullscreen_required: bool
+    window_switch_detect: bool = False
+    block_paste: bool = False
     test_cases_count: int = 0
 
     model_config = {"from_attributes": True}

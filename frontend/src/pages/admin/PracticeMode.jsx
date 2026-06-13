@@ -289,6 +289,14 @@ export default function PracticeMode() {
       load()
     } catch { toast.error('Failed to update status') }
   }
+  const handleDelete = async (p) => {
+    if (!window.confirm(`Permanently delete "${p.title}"?\n\nThis removes the problem, its test cases, assignments and all student submissions. This cannot be undone.`)) return
+    try {
+      await api.delete(`/problems/${p.id}/permanent`)
+      toast.success('Problem deleted')
+      load()
+    } catch { toast.error('Failed to delete') }
+  }
 
   const handleSave = async (payload) => {
     setSaving(true)
@@ -364,7 +372,7 @@ export default function PracticeMode() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((p) => (
-            <ProblemCard key={p.id} problem={p} onEdit={handleEdit} onDuplicate={handleDuplicate} onToggle={handleToggleActive} />
+            <ProblemCard key={p.id} problem={p} onEdit={handleEdit} onDuplicate={handleDuplicate} onToggle={handleToggleActive} onDelete={handleDelete} />
           ))}
         </div>
       )}
@@ -382,7 +390,7 @@ export default function PracticeMode() {
   )
 }
 
-function ProblemCard({ problem: p, onEdit, onDuplicate, onToggle }) {
+function ProblemCard({ problem: p, onEdit, onDuplicate, onToggle, onDelete }) {
   return (
     <div className="card" style={p.is_active ? undefined : { opacity: 0.62 }}>
       <div className="flex items-start justify-between mb-2">
@@ -395,8 +403,11 @@ function ProblemCard({ problem: p, onEdit, onDuplicate, onToggle }) {
             <Copy size={14} />
           </button>
           <button onClick={() => onToggle(p)} title={p.is_active ? 'Deactivate' : 'Activate'} className="btn-ghost p-1"
-            style={{ color: p.is_active ? 'var(--err)' : 'var(--ok)' }}>
+            style={{ color: p.is_active ? 'var(--warn)' : 'var(--ok)' }}>
             <Power size={14} />
+          </button>
+          <button onClick={() => onDelete(p)} title="Delete permanently" className="btn-ghost p-1" style={{ color: 'var(--err)' }}>
+            <Trash2 size={14} />
           </button>
         </div>
       </div>

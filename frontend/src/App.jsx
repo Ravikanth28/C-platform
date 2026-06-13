@@ -14,6 +14,7 @@ import AdminSystem     from './pages/admin/System'
 import AdminChallenges from './pages/admin/Challenges'
 import AdminLessons    from './pages/admin/Lessons'
 import AdminStudents   from './pages/admin/Students'
+import AdminLiveTests  from './pages/admin/LiveTests'
 import Classroom       from './pages/Classroom'
 import Analytics       from './pages/Analytics'
 import Profile         from './pages/Profile'
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="notes"     element={<AdminNotes />} />
         <Route path="practice"  element={<AdminPractice />} />
         <Route path="tests"     element={<AdminTest />} />
+        <Route path="live"      element={<AdminLiveTests />} />
         <Route path="classroom" element={<Classroom />} />
         <Route path="challenges" element={<AdminChallenges />} />
         <Route path="lessons"   element={<AdminLessons />} />

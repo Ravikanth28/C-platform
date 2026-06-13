@@ -247,6 +247,86 @@ def dashboard(
     }
 
 
+@router.get("/test-live")
+def test_live(db: Session = Depends(get_db), _admin=Depends(get_admin_user)):
+    """Live proctoring per test: each student's status, time left, violations, runs, passed."""
+    now = datetime.datetime.utcnow()
+    active_since = now - datetime.timedelta(seconds=90)   # heartbeat within 90s = "attending"
+    _STATUS_ORDER = {"attending": 0, "not_started": 1, "done": 2}
+
+    students = db.query(models.User).filter(models.User.role == models.UserRole.student).all()
+    student_ids = {s.id for s in students}
+    info = {s.id: {"id": s.id, "name": s.full_name or s.username, "avatar_color": s.avatar_color}
+            for s in students}
+
+    tests = (db.query(models.Problem)
+             .filter(models.Problem.mode == models.ProblemMode.test, models.Problem.is_active == True)
+             .order_by(models.Problem.created_at.desc()).all())
+
+    out = []
+    for t in tests:
+        assigned = sorted(set(student_ids) if t.is_for_all
+                          else ({a.user_id for a in t.assignments} & student_ids))
+        if not assigned:
+            continue
+
+        # sessions (heartbeats) for this test
+        sessions = {s.user_id: s for s in db.query(models.TestSession)
+                    .filter(models.TestSession.problem_id == t.id,
+                            models.TestSession.user_id.in_(assigned)).all()}
+        # submissions → best passed / latest / tab switches
+        sub = {}
+        for s in (db.query(models.Submission)
+                  .filter(models.Submission.problem_id == t.id,
+                          models.Submission.user_id.in_(assigned)).all()):
+            cur = sub.setdefault(s.user_id, {"passed": 0, "total": 0, "tabs": 0, "last": None})
+            cur["passed"] = max(cur["passed"], s.test_cases_passed or 0)
+            cur["total"] = max(cur["total"], s.test_cases_total or 0)
+            cur["tabs"] = max(cur["tabs"], s.tab_switches or 0)
+            if s.submitted_at and (cur["last"] is None or s.submitted_at > cur["last"]):
+                cur["last"] = s.submitted_at
+
+        rows, counts = [], {"attending": 0, "done": 0, "not_started": 0}
+        for uid in assigned:
+            sess = sessions.get(uid)
+            done = uid in sub
+            attending = (not done) and sess is not None and sess.last_seen and sess.last_seen >= active_since
+            status = "done" if done else ("attending" if attending else "not_started")
+            counts[status] += 1
+
+            time_left = None
+            if t.duration and sess and sess.started_at and not done:
+                left = (sess.started_at + datetime.timedelta(minutes=t.duration) - now).total_seconds()
+                time_left = max(0, int(left))
+
+            violations = max((sess.tab_switches if sess else 0) or 0,
+                             (sub.get(uid, {}).get("tabs", 0)))
+            runs = (sess.runs if sess else 0) or 0
+            last = sub.get(uid, {}).get("last") or (sess.last_seen if sess else None)
+
+            rows.append({
+                **info.get(uid, {"id": uid, "name": f"#{uid}", "avatar_color": None}),
+                "status": status,
+                "time_left": time_left,
+                "violations": violations,
+                "runs": runs,
+                "passed": sub.get(uid, {}).get("passed", 0),
+                "total_cases": sub.get(uid, {}).get("total", 0),
+                "last_active": last.isoformat() if last else None,
+            })
+
+        rows.sort(key=lambda r: (_STATUS_ORDER.get(r["status"], 9), r["name"].lower()))
+        out.append({
+            "id": t.id, "title": t.title, "difficulty": t.difficulty, "duration": t.duration,
+            "total": len(assigned), "done": counts["done"],
+            "attending": counts["attending"], "not_done": counts["not_started"],
+            "students": rows,
+        })
+
+    out.sort(key=lambda x: (-x["attending"], -x["done"]))
+    return {"tests": out, "as_of": now.isoformat()}
+
+
 @router.get("/students", response_model=List[schemas.UserResponse])
 def list_students(
     db: Session = Depends(get_db),

@@ -36,6 +36,8 @@ def _problem_dict(p: models.Problem) -> dict:
         "copy_paste_disable": p.copy_paste_disable,
         "f12_disable": p.f12_disable,
         "fullscreen_required": p.fullscreen_required,
+        "window_switch_detect": p.window_switch_detect,
+        "block_paste": p.block_paste,
         "test_cases_count": len(p.test_cases),
     }
 
@@ -64,6 +66,8 @@ def create_problem(
         copy_paste_disable=payload.copy_paste_disable,
         f12_disable=payload.f12_disable,
         fullscreen_required=payload.fullscreen_required,
+        window_switch_detect=payload.window_switch_detect,
+        block_paste=payload.block_paste,
     )
     db.add(problem)
     db.flush()
@@ -165,6 +169,7 @@ def update_problem(
         "title", "description", "topics", "starter_code", "mode", "difficulty",
         "start_time", "end_time", "duration", "is_for_all",
         "tab_switch_detect", "copy_paste_disable", "f12_disable", "fullscreen_required",
+        "window_switch_detect", "block_paste",
     ):
         setattr(p, field, getattr(payload, field))
 
@@ -205,6 +210,7 @@ def duplicate_problem(
         is_active=True,
         tab_switch_detect=p.tab_switch_detect, copy_paste_disable=p.copy_paste_disable,
         f12_disable=p.f12_disable, fullscreen_required=p.fullscreen_required,
+        window_switch_detect=p.window_switch_detect, block_paste=p.block_paste,
     )
     db.add(clone)
     db.flush()
@@ -250,3 +256,48 @@ def delete_problem(
     p.is_active = False
     db.commit()
     return {"detail": "Deactivated"}
+
+
+# ──────────────────────── Hard delete (permanent) ─────────────────────────
+
+@router.delete("/{problem_id}/permanent")
+def delete_problem_permanent(
+    problem_id: int,
+    db: Session = Depends(get_db),
+    _admin=Depends(get_admin_user),
+):
+    """Permanently remove a problem and everything tied to it.
+
+    Submissions reference problems with no ON DELETE cascade, so we clear
+    dependent rows in dependency order before removing the problem itself.
+    """
+    p = db.query(models.Problem).filter(models.Problem.id == problem_id).first()
+    if not p:
+        raise HTTPException(404, "Problem not found")
+
+    sub_ids = [s.id for s in db.query(models.Submission.id)
+               .filter(models.Submission.problem_id == problem_id).all()]
+    if sub_ids:
+        db.query(models.SubmissionResult).filter(
+            models.SubmissionResult.submission_id.in_(sub_ids)
+        ).delete(synchronize_session=False)
+        db.query(models.Submission).filter(
+            models.Submission.problem_id == problem_id
+        ).delete(synchronize_session=False)
+
+    db.query(models.AssignmentProblem).filter(
+        models.AssignmentProblem.problem_id == problem_id
+    ).delete(synchronize_session=False)
+    db.query(models.ProblemAssignment).filter(
+        models.ProblemAssignment.problem_id == problem_id
+    ).delete(synchronize_session=False)
+    db.query(models.TestSession).filter(
+        models.TestSession.problem_id == problem_id
+    ).delete(synchronize_session=False)
+    db.query(models.TestCase).filter(
+        models.TestCase.problem_id == problem_id
+    ).delete(synchronize_session=False)
+
+    db.delete(p)
+    db.commit()
+    return {"detail": "Deleted"}

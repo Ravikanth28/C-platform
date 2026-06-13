@@ -28,6 +28,7 @@ const ADMIN_STEPS = [
   { selector: '[data-tour="nav-challenges"]', placement: P, title: 'Challenges', body: 'Author Predict/Fix-the-Bug, AI-generate them in one click, or auto-add daily/weekly.' },
   { selector: '[data-tour="nav-practice"]', placement: P, title: 'Practice Mode', body: 'Create & manage practice problems with test cases and optional starter code.' },
   { selector: '[data-tour="nav-tests"]', placement: P, title: 'Test Mode', body: 'Create timed, proctored assessments (tab-switch detection, fullscreen, copy-paste lock).' },
+  { selector: '[data-tour="nav-live"]', placement: P, title: 'Live Tests', body: "Monitor tests in real time — who's attending right now, who's done, and who hasn't started." },
   { selector: '[data-tour="nav-reports"]', placement: P, title: 'Reports', body: 'The full gradebook — filter, leave feedback, and export to Excel.' },
   { selector: '[data-tour="nav-analytics"]', placement: P, title: 'Analytics', body: "Cohort insights: hardest problems, weak topics, and who's stuck." },
   { selector: '[data-tour="nav-system"]', placement: P, title: 'System', body: 'Live service health, a real-time request log, storage usage, and database backups.' },

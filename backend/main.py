@@ -34,6 +34,10 @@ def _lightweight_migrate():
         "ALTER TABLE submissions ADD COLUMN feedback TEXT",
         "ALTER TABLE problems ADD COLUMN starter_code TEXT",
         "ALTER TABLE users ADD COLUMN phone VARCHAR(20)",
+        "ALTER TABLE test_sessions ADD COLUMN tab_switches INT DEFAULT 0",
+        "ALTER TABLE test_sessions ADD COLUMN runs INT DEFAULT 0",
+        "ALTER TABLE problems ADD COLUMN window_switch_detect BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE problems ADD COLUMN block_paste BOOLEAN DEFAULT FALSE",
     ]
     with engine.begin() as conn:
         for s in stmts:

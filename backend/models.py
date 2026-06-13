@@ -135,6 +135,8 @@ class Problem(Base):
     copy_paste_disable = Column(Boolean, default=False)
     f12_disable = Column(Boolean, default=False)
     fullscreen_required = Column(Boolean, default=False)
+    window_switch_detect = Column(Boolean, default=False)
+    block_paste = Column(Boolean, default=False)
 
     test_cases = relationship(
         "TestCase", back_populates="problem", cascade="all, delete-orphan"
@@ -286,6 +288,19 @@ class Lesson(Base):
     content = Column(Text)                     # JSON: [{type, ...}, ...]
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class TestSession(Base):
+    """Heartbeat of a student actively in a test — powers the live 'who's attending' view."""
+    __tablename__ = "test_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    problem_id = Column(Integer, ForeignKey("problems.id", ondelete="CASCADE"), index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    started_at = Column(DateTime, default=datetime.datetime.utcnow)
+    last_seen = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    tab_switches = Column(Integer, default=0)   # proctoring: tab-switch violations
+    runs = Column(Integer, default=0)           # how many times they've Run code
 
 
 class LessonCompletion(Base):
