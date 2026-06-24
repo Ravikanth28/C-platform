@@ -71,7 +71,9 @@ export default function StudentTestMode() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {problems.map((p) => {
             const sub  = subs[p.id]
-            const canEnter = !p.end_time || !isPast(new Date(p.end_time))
+            const hasStarted = !p.start_time || isPast(new Date(p.start_time))
+            const hasEnded = p.end_time && isPast(new Date(p.end_time))
+            const canEnter = hasStarted && !hasEnded
             const alreadyDone = sub?.status === 'Accepted'
 
             return (
@@ -112,7 +114,7 @@ export default function StudentTestMode() {
                   disabled={!canEnter}
                   className={`mt-auto justify-center text-sm ${canEnter ? 'btn-primary' : 'btn-secondary opacity-50 cursor-not-allowed'}`}
                 >
-                  {!canEnter ? <><Lock size={13} /> Closed</> : alreadyDone ? <>Retry <ArrowRight size={13} /></> : <>Enter Test <ArrowRight size={13} /></>}
+                  {!hasStarted ? <><Lock size={13} /> Upcoming</> : hasEnded ? <><Lock size={13} /> Closed</> : alreadyDone ? <>Retry <ArrowRight size={13} /></> : <>Enter Test <ArrowRight size={13} /></>}
                 </button>
               </div>
             )
