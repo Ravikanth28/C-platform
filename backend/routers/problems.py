@@ -174,7 +174,15 @@ def update_problem(
         setattr(p, field, getattr(payload, field))
 
     # Replace test cases
-    db.query(models.TestCase).filter(models.TestCase.problem_id == problem_id).delete()
+    # Nullify references in submission_results to avoid FK constraint violations
+    existing_tcs = db.query(models.TestCase).filter(models.TestCase.problem_id == problem_id).all()
+    if existing_tcs:
+        tc_ids = [tc.id for tc in existing_tcs]
+        db.query(models.SubmissionResult).filter(
+            models.SubmissionResult.test_case_id.in_(tc_ids)
+        ).update({"test_case_id": None}, synchronize_session=False)
+
+    db.query(models.TestCase).filter(models.TestCase.problem_id == problem_id).delete(synchronize_session=False)
     for i, tc in enumerate(payload.test_cases):
         db.add(
             models.TestCase(

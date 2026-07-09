@@ -70,7 +70,7 @@ async def chat_completion(
                 else:
                     last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
                     continue
-            except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            except httpx.RequestError as exc:
                 last_error = str(exc)
                 continue
 
